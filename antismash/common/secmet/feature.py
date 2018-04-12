@@ -515,15 +515,10 @@ class Domain(AntismashFeature):
     """ A base class for features which represent a domain type """
     __slots__ = ["tool", "domain", "_asf"]
 
-    def __init__(self, location, feature_type, domain: Optional[str] = None):
+    def __init__(self, location, feature_type):
         super().__init__(location, feature_type)
         self.tool = None
-        if domain is not None:
-            if not isinstance(domain, str):
-                raise TypeError("Domain must be given domain as a string, not %s" % type(domain))
-            if not domain:
-                raise ValueError("Domain cannot be an empty string")
-        self.domain = domain
+        self.domain = None
         self._asf = ActiveSiteFinderQualifier()
 
     @property
@@ -551,8 +546,10 @@ class Domain(AntismashFeature):
             assert isinstance(feature, Domain), type(feature)
 
         # grab optional qualifiers
-        feature.tool = leftovers.pop("aSTool", [None])[0]
-        feature.domain = leftovers.pop("aSDomain", [None])[0]
+        if "aSTool" in leftovers:
+            feature.tool = leftovers.pop("aSTool")[0]
+        if "asDomain" in leftovers:
+            feature.domain = leftovers.pop("asDomain")[0]
 
         # grab parent optional qualifiers
         return AntismashFeature.from_biopython(bio_feature, feature=feature, leftovers=leftovers)
@@ -588,39 +585,27 @@ class CDSMotif(Domain):
 class PFAMDomain(Domain):
     """ A feature representing a PFAM domain within a CDS.
     """
-    __slots__ = ["description", "db_xref", "probability", "protein_start", "protein_end"]
+    __slots__ = ["description", "db_xref", "probability"]
 
-    def __init__(self, location: FeatureLocation, description: str, protein_start: int,
-                 protein_end: int, domain: Optional[str] = None) -> None:
-        """ Arguments:
-                location: the DNA location of the feature
-                description: a string with a description
-                protein_start: the start point within the parent CDS translation
-                protein_end: the end point within the parent CDS translation
-                domain: the name for the domain (e.g. p450 vs the dbxref PF00067)
-        """
-        super().__init__(location, feature_type="PFAM_domain", domain=domain)
-        if not isinstance(description, str):
-            raise TypeError("PFAMDomain description must be a string, not %s" % type(description))
-        if not description:
-            raise ValueError("PFAMDomain description cannot be empty")
+    def __init__(self, location: FeatureLocation, description: str, domain: Optional[str] = None) -> None:
+        super().__init__(location, feature_type="PFAM_domain")
+        assert description and isinstance(description, str), description
+        if domain is not None:
+            assert domain and isinstance(domain, str), domain
+        self.domain = domain
         self.description = description
         self.probability = None
         self.db_xref = []  # type: List[str]
-        self.protein_start = int(protein_start)
-        self.protein_end = int(protein_end)
-        if self.protein_start >= self.protein_end:
-            raise ValueError("A PFAMDomain protein location cannot end before it starts")
 
     def to_biopython(self, qualifiers=None):
         mine = OrderedDict()
-        mine["description"] = [self.description]
-        mine["protein_start"] = [self.protein_start]
-        mine["protein_end"] = [self.protein_end]
+        mine["description"] = self.description
         if self.probability is not None:
             mine["probability"] = [self.probability]
         if self.db_xref:
             mine["db_xref"] = self.db_xref
+        if self.domain is not None:
+            mine["domain"] = self.domain
         if qualifiers:
             mine.update(qualifiers)
         return super().to_biopython(mine)
@@ -631,9 +616,7 @@ class PFAMDomain(Domain):
             leftovers = Feature.make_qualifiers_copy(bio_feature)
         # grab mandatory qualifiers and create the class
         description = leftovers.pop("description")[0]
-        p_start = int(leftovers.pop("protein_start")[0])
-        p_end = int(leftovers.pop("protein_end")[0])
-        feature = PFAMDomain(bio_feature.location, description, p_start, p_end)
+        feature = PFAMDomain(bio_feature.location, description)
 
         # grab optional qualifiers
         feature.db_xref = leftovers.pop("db_xref", [])
@@ -684,7 +667,7 @@ class CDSFeature(Feature):
     """ A feature representing a single CDS/gene. """
     __slots__ = ["_translation", "protein_id", "locus_tag", "gene", "product",
                  "transl_table", "_sec_met", "product_prediction", "cluster", "_gene_functions",
-                 "unique_id", "_nrps_pks", "motifs"]
+                 "unique_id", "_nrps_pks", "motifs", "_asf"]
 
     def __init__(self, location, translation=None, locus_tag=None, protein_id=None,
                  product=None, gene=None):
@@ -715,6 +698,8 @@ class CDSFeature(Feature):
 
         if not (protein_id or locus_tag or gene):
             raise ValueError("CDSFeature requires at least one of: gene, protein_id, locus_tag")
+
+        self._asf = ActiveSiteFinderQualifier()
 
         # runtime-only data
         self.cluster = None
@@ -765,6 +750,11 @@ class CDSFeature(Feature):
     def translation(self, translation: str) -> None:
         assert "-" not in translation, "%s contains - in translation" % self.get_name()
         self._translation = str(translation)
+
+    @property
+    def asf(self) -> ActiveSiteFinderQualifier:
+        """ An ActiveSiteFinderQualifier storing active site descriptions """
+        return self._asf
 
     def get_accession(self) -> str:
         "Get the gene ID from protein id, gene name or locus_tag, in that order"
@@ -835,6 +825,8 @@ class CDSFeature(Feature):
             val = getattr(self, attr)
             if val:
                 mine[attr] = [str(val)]
+        if self._asf:
+            mine["ASF"] = self._asf.to_biopython()
         if self._gene_functions:
             mine["gene_functions"] = list(map(str, self._gene_functions))
         # since it's already a list

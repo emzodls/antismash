@@ -12,7 +12,6 @@
 
 
 import bisect
-from collections import defaultdict
 import logging
 from typing import Dict, List, Optional, Tuple, Union
 
@@ -32,7 +31,7 @@ class Record:
                  "_clusters", "original_id",
                  "_cluster_borders", "_cds_motifs", "_pfam_domains", "_antismash_domains",
                  "_cluster_numbering", "_nonspecific_features", "record_index",
-                 "_genes", "_transl_table", "_domains_by_name", "_pfams_by_cds_name"]
+                 "_genes", "_transl_table", "_domains_by_name"]
 
     def __init__(self, seq="", transl_table: int = 1, **kwargs):
         self._record = SeqRecord(seq, **kwargs)
@@ -51,7 +50,6 @@ class Record:
         self._nonspecific_features = []
         self._transl_table = int(transl_table)
         self._domains_by_name = {}  # for use as x[domain.get_name()] = domain
-        self._pfams_by_cds_name = defaultdict(list)  # type: Dict[str, List[PFAMDomain]]
 
     def __getattr__(self, attr):
         # passthroughs to the original SeqRecord
@@ -143,33 +141,12 @@ class Record:
         """A list of secondary metabolite PFAM_domains present in the record"""
         return tuple(self._pfam_domains)
 
-    def get_pfam_domains_in_cds(self, cds: Union[str, CDSFeature]) -> Tuple[PFAMDomain, ...]:
-        """ Returns a list of PFAMDomains contained by a CDSFeature. Either the
-            CDS name or the CDSFeature itself can be used to specify which CDS.
-        """
-        if isinstance(cds, CDSFeature):
-            cds_name = cds.get_name()
-        elif isinstance(cds, str):
-            cds_name = cds
-        else:
-            raise TypeError("CDS must be a string or CDSFeature, not %s" % type(cds))
-        return self._pfams_by_cds_name[cds_name]
-
-    def clear_pfam_domains(self) -> None:
-        """ Remove all PFAMDomain features """
-        self._pfams_by_cds_name.clear()
-        # remove pfams only from the domains mapping
-        for domain in self._pfam_domains:
-            del self._domains_by_name[domain.get_name()]
-        self._pfam_domains.clear()
-
     def get_antismash_domains(self) -> Tuple:
         """A list of secondary metabolite aSDomains present in the record"""
         return tuple(self._antismash_domains)
 
     def clear_antismash_domains(self) -> None:
         "Remove all AntismashDomain features"
-        # remove antismash domains only from the domains mapping
         for domain in self._antismash_domains:
             del self._domains_by_name[domain.get_name()]
         self._antismash_domains.clear()
@@ -347,7 +324,7 @@ class Record:
         self._cds_features.remove(cds_feature)
 
     def add_cds_motif(self, motif: Union[CDSMotif, Prepeptide]) -> None:
-        """ Add the given CDSMotif to the record """
+        """ Add the given cluster to the record """
         assert isinstance(motif, (CDSMotif, Prepeptide)), "%s, %s" % (type(motif), motif.type)
         self._cds_motifs.append(motif)
         assert motif.get_name()
@@ -357,7 +334,7 @@ class Record:
         self._domains_by_name[motif.get_name()] = motif
 
     def add_pfam_domain(self, pfam_domain: PFAMDomain) -> None:
-        """ Add the given PFAMDomain to the record and links it in the parent CDS """
+        """ Add the given cluster to the record """
         assert isinstance(pfam_domain, PFAMDomain)
         assert pfam_domain.get_name()
         self._pfam_domains.append(pfam_domain)
@@ -365,10 +342,9 @@ class Record:
             raise ValueError("Multiple Domain features have the same name for mapping: %s" %
                              pfam_domain.get_name())
         self._domains_by_name[pfam_domain.get_name()] = pfam_domain
-        self._pfams_by_cds_name[pfam_domain.locus_tag].append(pfam_domain)
 
     def add_antismash_domain(self, antismash_domain: AntismashDomain) -> None:
-        """ Add the given AntismashDomain to the record """
+        """ Add the given cluster to the record """
         assert isinstance(antismash_domain, AntismashDomain)
         assert antismash_domain.get_name()
         self._antismash_domains.append(antismash_domain)
