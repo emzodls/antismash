@@ -76,7 +76,7 @@ def check_options(options) -> List[str]:
     return []
 
 
-def regenerate_previous_results(previous, record, options) -> ClusterBlastResults:
+def regenerate_previous_results(previous, record, _options) -> ClusterBlastResults:
     """ Regenerates previous results """
     if not previous:
         logging.debug("No previous clusterblast results to reuse")

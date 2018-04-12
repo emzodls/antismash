@@ -53,7 +53,7 @@ class ModuleResults:
         pass
 
 
-class DetectionResults(ModuleResults):
+class DetectionResults(ModuleResults):  # keeping abstract is deliberate, pylint: disable=abstract-method
     """ Stores results for detection modules.
 
         add_to_record() no longer requires overriding
@@ -62,6 +62,8 @@ class DetectionResults(ModuleResults):
     def add_to_record(self, record: Record) -> None:
         pass
 
-    def get_predictions(self) -> List[ClusterBorder]:
-        """ Returns a list of ClusterBorder features predicted by the module """
+    def get_predictions(self) -> List[ClusterBorder]:  # pylint: disable=no-self-use
+        """ Returns a list of ClusterBorder features predicted by the module.
+            Should be overridden by any subclass that makes cluster predictions.
+        """
         return []
