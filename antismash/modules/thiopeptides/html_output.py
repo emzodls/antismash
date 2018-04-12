@@ -22,7 +22,7 @@ class ThiopeptideLayer(ClusterLayer):
         ClusterLayer.__init__(self, record, cluster_feature)
         self.motifs = []
         for motif in results.motifs:
-            if motif.is_contained_by(self.cluster_rec):
+            if motif.is_contained_by(self.cluster_feature):
                 self.motifs.append(motif)
 
 
@@ -32,7 +32,7 @@ def generate_details_div(cluster_layer, results, record_layer, options_layer) ->
                       autoescape=True, undefined=StrictUndefined)
     template = env.get_template('details.html')
     details_div = template.render(record=record_layer,
-                                  cluster=ThiopeptideLayer(record_layer, results, cluster_layer.cluster_rec),
+                                  cluster=ThiopeptideLayer(record_layer, results, cluster_layer.cluster_feature),
                                   options=options_layer)
     return details_div
 
@@ -42,7 +42,7 @@ def generate_sidepanel(cluster_layer, results, record_layer, options_layer) -> s
     env = Environment(loader=FileSystemLoader(path.get_full_path(__file__, "templates")),
                       autoescape=True, undefined=StrictUndefined)
     template = env.get_template('sidepanel.html')
-    cluster = ThiopeptideLayer(record_layer, results, cluster_layer.cluster_rec)
+    cluster = ThiopeptideLayer(record_layer, results, cluster_layer.cluster_feature)
     record = record_layer
     sidepanel = template.render(record=record,
                                 cluster=cluster,

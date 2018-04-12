@@ -36,9 +36,9 @@ class Record:
 
     def __init__(self, seq="", transl_table: int = 1, **kwargs):
         self._record = SeqRecord(seq, **kwargs)
-        self.record_index = None
+        self.record_index = None  # type: Optional[int]
         self.original_id = None
-        self.skip = False  # TODO: move to yet another abstraction layer?
+        self.skip = None  # type: Optional[str] # TODO: move to yet another abstraction layer?
         self._genes = []
         self._cds_features = []
         self._cds_by_name = {}

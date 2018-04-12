@@ -3,13 +3,13 @@
 
 import os
 import threading
+from typing import TypeVar
 
 from .args import build_parser
 from .loader import load_config_from_file
 
 _USER_FILE_NAME = os.path.expanduser('~/.antismash5.cfg')
 _INSTANCE_FILE_NAME = 'instance.cfg'
-
 
 class Config:  # since it's a glorified namespace, pylint: disable=too-few-public-methods
     __singleton = None
@@ -61,6 +61,9 @@ class Config:  # since it's a glorified namespace, pylint: disable=too-few-publi
             Config.__singleton.__dict__.update(values)
         Config.__lock.release()
         return Config.__singleton
+
+
+ConfigType = TypeVar(Config._Config)  # pylint: disable=invalid-name
 
 
 def update_config(values) -> Config:

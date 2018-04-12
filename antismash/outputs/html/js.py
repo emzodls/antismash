@@ -65,13 +65,13 @@ def convert_clusters(record, options, result):
         if cluster.probability is not None:
             js_cluster['probability'] = cluster.probability
         js_cluster['knowncluster'] = "-"
-        js_cluster['BGCid'] = "-"
+        js_cluster['bgc_id'] = "-"
         js_cluster['anchor'] = "r%dc%d" % (record.record_index, cluster.get_cluster_number())
 
         if cluster.knownclusterblast:
             bestcluster = cluster.knownclusterblast[0]
             js_cluster['knowncluster'] = bestcluster[0]
-            js_cluster['BGCid'] = bestcluster[1]
+            js_cluster['bgc_id'] = bestcluster[1]
         js_clusters.append(js_cluster)
 
     return js_clusters

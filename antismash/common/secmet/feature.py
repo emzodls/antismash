@@ -517,7 +517,7 @@ class Domain(AntismashFeature):
 
     def __init__(self, location, feature_type, domain: Optional[str] = None):
         super().__init__(location, feature_type)
-        self.tool = None
+        self.tool = None  # type: Optional[str]
         if domain is not None:
             if not isinstance(domain, str):
                 raise TypeError("Domain must be given domain as a string, not %s" % type(domain))
@@ -1029,7 +1029,7 @@ class Cluster(Feature):
 
         # for runtime management
         self.parent_record = None
-        self.cds_children = OrderedDict()
+        self.cds_children = OrderedDict()  # type: Dict[CDSFeature, None]
         self.borders = []
 
     @property

@@ -18,7 +18,7 @@ def generate_details_div(cluster_layer, results, record_layer, options_layer) ->
     """ Generates the HTML sections of the body details for all variants
         of clusterblast
     """
-    cluster = cluster_layer.cluster_rec
+    cluster = cluster_layer.cluster_feature
     divs = []
     if options_layer.cb_general or cluster.clusterblast is not None:
         divs.append(generate_div(cluster_layer, results, record_layer, options_layer, "clusterblast"))

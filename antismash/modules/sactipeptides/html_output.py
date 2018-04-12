@@ -20,7 +20,7 @@ def generate_details_div(cluster_layer, results, record_layer, options_layer):
     for locus in results.clusters.get(cluster_layer.get_cluster_number(), []):
         motifs_in_cluster[locus] = results.motifs_by_locus[locus]
     details_div = template.render(record=record_layer,
-                                  cluster=SactipeptideLayer(record_layer, cluster_layer.cluster_rec),
+                                  cluster=SactipeptideLayer(record_layer, cluster_layer.cluster_feature),
                                   options=options_layer,
                                   results=motifs_in_cluster)
     return details_div
@@ -30,7 +30,7 @@ def generate_sidepanel(cluster_layer, results, record_layer, options_layer):
     env = Environment(loader=FileSystemLoader([path.get_full_path(__file__, 'templates')]),
                       autoescape=True, undefined=StrictUndefined)
     template = env.get_template('sidepanel.html')
-    cluster = SactipeptideLayer(record_layer, cluster_layer.cluster_rec)
+    cluster = SactipeptideLayer(record_layer, cluster_layer.cluster_feature)
     motifs_in_cluster = {}
     for locus in results.clusters.get(cluster_layer.get_cluster_number(), []):
         motifs_in_cluster[locus] = results.motifs_by_locus[locus]
@@ -49,7 +49,7 @@ class SactipeptideLayer(ClusterLayer):
         for motif in self.record.seq_record.get_cds_motifs():
             if not isinstance(motif, Prepeptide):
                 continue
-            if not motif.is_contained_by(self.cluster_rec):
+            if not motif.is_contained_by(self.cluster_feature):
                 continue
             if motif.peptide_class == "sactipeptide":
                 self.motifs.append(motif)

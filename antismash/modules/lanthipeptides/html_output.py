@@ -24,7 +24,7 @@ class LanthipeptideLayer(ClusterLayer):
         for motif in self.record.seq_record.get_cds_motifs():
             if not isinstance(motif, Prepeptide):
                 continue
-            if not motif.is_contained_by(self.cluster_rec):
+            if not motif.is_contained_by(self.cluster_feature):
                 continue
             if motif.peptide_class == "lanthipeptide":
                 self.motifs.append(motif)
@@ -32,7 +32,7 @@ class LanthipeptideLayer(ClusterLayer):
 
 def generate_details_div(cluster_layer, results, record_layer, options_layer) -> str:
     """ Generates a HTML div for the main page of results """
-    lanthi_layer = LanthipeptideLayer(record_layer, cluster_layer.cluster_rec)
+    lanthi_layer = LanthipeptideLayer(record_layer, cluster_layer.cluster_feature)
     if not results:
         return ""
     env = Environment(loader=FileSystemLoader(path.get_full_path(__file__, "templates")),
@@ -54,7 +54,7 @@ def generate_sidepanel(cluster_layer, results, record_layer, options_layer) -> s
         loader=FileSystemLoader(path.get_full_path(__file__, "templates")),
         autoescape=True, undefined=StrictUndefined)
     template = env.get_template('sidepanel.html')
-    cluster = LanthipeptideLayer(record_layer, cluster_layer.cluster_rec)
+    cluster = LanthipeptideLayer(record_layer, cluster_layer.cluster_feature)
     if not results:
         return ""
     record = record_layer

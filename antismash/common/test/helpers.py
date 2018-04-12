@@ -18,7 +18,7 @@ from Bio.SeqFeature import FeatureLocation
 from helperlibs.wrappers.io import TemporaryDirectory
 
 import antismash
-from antismash.common import serialiser, module_results, path, record_processing
+from antismash.common import serialiser, module_results, path
 from antismash.common.secmet import Cluster, CDSFeature, Feature, Record
 from antismash.config import update_config
 from antismash.config.args import build_parser
