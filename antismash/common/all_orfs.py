@@ -9,14 +9,14 @@
 """
 
 
-from typing import List
+from typing import List, Optional
 
 from Bio.SeqFeature import FeatureLocation, BeforePosition, AfterPosition
 
-from antismash.common.secmet import CDSFeature, Feature
+from antismash.common.secmet import CDSFeature, Feature, Record, Cluster
 
 
-def scan_orfs(seq, direction: int, offset: int = 0) -> List[FeatureLocation]:
+def scan_orfs(seq: str, direction: int, offset: int = 0) -> List[FeatureLocation]:
     """ Scan for open reading frames on a given sequence.
         Skips all ORFs with a size less than 60 bases.
 
@@ -87,7 +87,8 @@ def scan_orfs(seq, direction: int, offset: int = 0) -> List[FeatureLocation]:
     return sorted(matches, key=lambda x: min(x.start, x.end))
 
 
-def create_feature_from_location(record, location, counter=1, label=None) -> CDSFeature:
+def create_feature_from_location(record: Record, location: FeatureLocation,
+                                 counter: int = 1, label: Optional[str] = None) -> CDSFeature:
     """ Creates a CDS feature covering the provided location.
 
         Arguments:
@@ -111,7 +112,7 @@ def create_feature_from_location(record, location, counter=1, label=None) -> CDS
     return feature
 
 
-def find_all_orfs(record, cluster=None) -> List[CDSFeature]:
+def find_all_orfs(record: Record, cluster: Optional[Cluster] = None) -> List[CDSFeature]:
     """ Find all ORFs of at least 60 bases that don't overlap with existing
         CDS features.
 

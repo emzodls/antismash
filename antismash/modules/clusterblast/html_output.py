@@ -1,6 +1,8 @@
 # License: GNU Affero General Public License v3 or later
 # A copy of GNU AGPL v3 should have been included in this software package in LICENSE.txt.
 
+""" Handles HTML generation for the clusterblast variants """
+
 from antismash.common import path
 
 from jinja2 import FileSystemLoader, Environment, StrictUndefined
@@ -16,7 +18,7 @@ def generate_details_div(cluster_layer, results, record_layer, options_layer) ->
     """ Generates the HTML sections of the body details for all variants
         of clusterblast
     """
-    cluster = cluster_layer.cluster_rec
+    cluster = cluster_layer.cluster_feature
     divs = []
     if options_layer.cb_general or cluster.clusterblast is not None:
         divs.append(generate_div(cluster_layer, results, record_layer, options_layer, "clusterblast"))
@@ -27,7 +29,7 @@ def generate_details_div(cluster_layer, results, record_layer, options_layer) ->
     return "\n".join(divs)
 
 
-def generate_div(cluster_layer, results, record_layer, options_layer, search_type) -> str:
+def generate_div(cluster_layer, _results, record_layer, options_layer, search_type) -> str:
     """ Generates the specific HTML section of the body for a given variant of
         clusterblast
     """

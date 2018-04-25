@@ -65,12 +65,13 @@ def convert_clusters(record, options, result):
         if cluster.probability is not None:
             js_cluster['probability'] = cluster.probability
         js_cluster['knowncluster'] = "-"
-        js_cluster['BGCid'] = "-"
+        js_cluster['bgc_id'] = "-"
+        js_cluster['anchor'] = "r%dc%d" % (record.record_index, cluster.get_cluster_number())
 
         if cluster.knownclusterblast:
             bestcluster = cluster.knownclusterblast[0]
             js_cluster['knowncluster'] = bestcluster[0]
-            js_cluster['BGCid'] = bestcluster[1]
+            js_cluster['bgc_id'] = bestcluster[1]
         js_clusters.append(js_cluster)
 
     return js_clusters
@@ -189,6 +190,16 @@ def get_description(record, feature, type_, options, mibig_result):
                 entry = '<a href="%s" target="_new">View smCOG seed phylogenetic tree with this gene</a>\n'
                 template += entry % url
                 break
+
+    asf_notes = []
+    for domain in feature.nrps_pks.domains:
+        for hit in record.get_domain_by_name(domain.feature_name).asf.hits:
+            asf_notes.append("%s (%d..%d): %s" % (domain.name, domain.start, domain.end, hit))
+    for pfam in record.get_pfam_domains_in_cds(feature):
+        for hit in pfam.asf.hits:
+            asf_notes.append("%s (%d..%d): %s" % (pfam.domain, pfam.protein_start, pfam.protein_end, hit))
+    if asf_notes:
+        template += '<span class="bold">Active Site Finder results:</span><br>\n%s<br><br>\n' % "<br>".join(asf_notes)
 
     clipboard_fragment = """<a href="javascript:copyToClipboard('%s')">Copy to clipboard</a>"""
     template += "AA sequence: %s<br>\n" % (clipboard_fragment % feature.translation)

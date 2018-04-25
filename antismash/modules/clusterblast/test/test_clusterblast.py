@@ -6,7 +6,6 @@
 
 import unittest
 import os
-from collections import defaultdict
 from minimock import mock, restore
 
 from helperlibs.wrappers.io import TemporaryDirectory
@@ -212,6 +211,7 @@ class TestQuery(unittest.TestCase):
         self.assertEqual(query.get_subjects_by_cluster("a"), [sub1, sub3])
         # check that an empty iterable is returned if cluster not known
         self.assertEqual(query.get_subjects_by_cluster("new_name"), [])
+
 
 # pylint: disable=assigning-non-slot
 class TestScore(unittest.TestCase):

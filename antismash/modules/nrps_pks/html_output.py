@@ -57,7 +57,7 @@ class JSONDomain(JSONBase):
 
 class JSONOrf(JSONBase):
     """ A JSON-serialisable object for simplifying ORF datatypes throughout this file """
-    def __init__(self, feature):
+    def __init__(self, feature: CDSFeature) -> None:
         super().__init__(['id', 'sequence', 'domains'])
         self.sequence = feature.translation
         self.id = feature.get_name()
@@ -89,7 +89,7 @@ def generate_details_div(cluster_layer, results, record_layer, options_layer) ->
     env = Environment(loader=FileSystemLoader(path.get_full_path(__file__, 'templates')),
                       autoescape=True, undefined=StrictUndefined)
     template = env.get_template('details.html')
-    cluster = NrpspksLayer(results, cluster_layer.cluster_rec, record_layer)
+    cluster = NrpspksLayer(results, cluster_layer.cluster_feature, record_layer)
     details_div = template.render(record=record_layer,
                                   cluster=cluster,
                                   options=options_layer)
@@ -101,7 +101,7 @@ def generate_sidepanel(cluster_layer, results, record_layer, options_layer) -> s
     env = Environment(loader=FileSystemLoader(path.get_full_path(__file__, 'templates')),
                       autoescape=True, undefined=StrictUndefined)
     template = env.get_template('sidepanel.html')
-    cluster = NrpspksLayer(results, cluster_layer.cluster_rec, record_layer)
+    cluster = NrpspksLayer(results, cluster_layer.cluster_feature, record_layer)
     sidepanel = template.render(record=record_layer,
                                 cluster=cluster,
                                 options=options_layer)
@@ -188,16 +188,15 @@ def get_norine_url_for_specificities(specificities, be_strict=True) -> Optional[
 
 
 class NrpspksLayer(ClusterLayer):
-    """ A """
-    def __init__(self, results, cluster_rec, record):
+    def __init__(self, results, cluster_feature, record):
         self.url_strict = {}  # gene name -> url
         self.url_relaxed = {}  # gene name -> url
-        super().__init__(record, cluster_rec)
+        super().__init__(record, cluster_feature)
         self.transatpks = False
         assert isinstance(results, NRPS_PKS_Results), list(results)
         self.results = results
 
-        cluster_number = cluster_rec.get_cluster_number()
+        cluster_number = cluster_feature.get_cluster_number()
         default_prediction = ("N/A", False)
         self.monomer, self.used_domain_docking = results.cluster_predictions.get(cluster_number, default_prediction)
 
@@ -206,7 +205,7 @@ class NrpspksLayer(ClusterLayer):
             drawing the domains
         """
         orfs = []  # type: List[JSONOrf]
-        for feature in self.cluster_rec.cds_children:
+        for feature in self.cluster_feature.cds_children:
             if not feature.nrps_pks:
                 continue
             js_orf = JSONOrf(feature)
@@ -215,7 +214,7 @@ class NrpspksLayer(ClusterLayer):
             orfs.append(js_orf)
 
         if orfs:
-            return {'id': "cluster-%s-details" % self.get_cluster_number(),
+            return {'id': self.anchor_id,
                     'orfs': orfs}
 
         return None
@@ -239,7 +238,7 @@ class NrpspksLayer(ClusterLayer):
             related searches
         """
         sidepanel_predictions = {}  # type: Dict[str, List[List[Tuple[str, str]]]]
-        features = self.cluster_rec.cds_children
+        features = self.cluster_feature.cds_children
         for feature in features:
             if not feature.nrps_pks:
                 continue
@@ -279,12 +278,12 @@ class NrpspksLayer(ClusterLayer):
 
     def is_nrps(self) -> bool:
         """ is the cluster a NRPS or NRPS hybrid """
-        return 'nrps' in self.cluster_rec.products
+        return 'nrps' in self.cluster_feature.products
 
-    def get_structure_image_url(self):
+    def get_structure_image_url(self) -> str:
         "Get the relative url to the structure image"
         expected = os.path.join("structures",
-                                "genecluster%d.png" % self.cluster_rec.get_cluster_number())
+                                "genecluster%d.png" % self.cluster_feature.get_cluster_number())
         abs_path = os.path.join(self.record.options.output_dir, expected)
         if os.path.exists(abs_path):
             return expected
@@ -294,7 +293,7 @@ class NrpspksLayer(ClusterLayer):
         "Get the monomer prediction of the cluster"
         return self.monomer
 
-    def get_norine_url_for_cluster(self, be_strict=True):
+    def get_norine_url_for_cluster(self, be_strict=True) -> str:
         """ Get a NORINE URL string for direct querying
             use be_strict=False to add * after each monomer"""
 

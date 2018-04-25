@@ -45,8 +45,8 @@ class HMMResult:
     @staticmethod
     def from_json(data: Dict[str, Union[str, int, float]]) -> "HMMResult":
         """ Rebuilds a HMMResult instance from a JSON representation """
-        return HMMResult(data["hit_id"], data["query_start"], data["query_end"],
-                         data["evalue"], data["bitscore"])
+        return HMMResult(str(data["hit_id"]), int(data["query_start"]), int(data["query_end"]),
+                         float(data["evalue"]), float(data["bitscore"]))
 
     def __repr__(self):
         return str(self)

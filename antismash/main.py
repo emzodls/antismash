@@ -7,6 +7,7 @@
     The intended entry point of antismash is run_antismash() in this file.
 """
 
+import argparse
 from collections import defaultdict
 import cProfile
 from datetime import datetime
@@ -18,18 +19,40 @@ import shutil
 import time
 import tempfile
 from types import ModuleType
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from Bio import SeqIO
 
-from antismash.config import update_config
+from antismash.config import update_config, ConfigType
 from antismash.common import serialiser, record_processing
 from antismash.common.module_results import ModuleResults
 from antismash.common.secmet import Record
+<<<<<<< HEAD
 from antismash.detection import genefinding, hmm_detection, nrps_pks_domains, full_hmmer, \
                                 cassis, clusterfinder, cluster_hmmer
 from antismash.modules import tta, clusterblast, lanthipeptides, smcogs, dummy, \
                               nrps_pks, thiopeptides, sactipeptides, lassopeptides, active_site_finder
+=======
+from antismash.detection import (full_hmmer,
+                                 hmm_detection,
+                                 nrps_pks_domains,
+                                 genefinding,
+                                 cassis,
+                                 clusterfinder,
+                                 cluster_hmmer,
+                                )
+from antismash.modules import (active_site_finder,
+                               clusterblast,
+                               dummy,
+                               lanthipeptides,
+                               lassopeptides,
+                               nrps_pks,
+                               sactipeptides,
+                               smcogs,
+                               thiopeptides,
+                               tta,
+                              )
+>>>>>>> f96bd089cb98efbddeb34adcbfc35641b2a307fd
 from antismash.outputs import html, svg
 
 __version__ = "5.0.0alpha"
@@ -125,7 +148,7 @@ def setup_logging(logfile: str = None, verbose: bool = False, debug: bool = Fals
     logging.getLogger('').addHandler(handler)
 
 
-def verify_options(options, modules: List[ModuleType]) -> bool:
+def verify_options(options: ConfigType, modules: List[ModuleType]) -> bool:
     """ Find and display any incompatibilities in provided options
 
         Arguments:
@@ -151,7 +174,7 @@ def verify_options(options, modules: List[ModuleType]) -> bool:
     return False
 
 
-def run_detection(record: Record, options, previous_result: Dict[str, Union[Dict, ModuleResults]]) -> Dict[str, float]:
+def run_detection(record: Record, options: ConfigType, previous_result: Dict[str, Union[Dict, ModuleResults]]) -> Dict[str, float]:
     """ Detect different secondary metabolite clusters, PFAMs, and domains.
 
         Arguments:
@@ -168,7 +191,7 @@ def run_detection(record: Record, options, previous_result: Dict[str, Union[Dict
     # strip any existing antismash results first  # TODO: don't strip detection stage results if reusing
     record_processing.strip_record(record)
 
-    timings = {}
+    timings = {}  # type: Dict[str, float]
 
     module_results = regenerate_results_for_record(record, options, get_detection_modules(),
                                                    previous_result)
@@ -178,6 +201,7 @@ def run_detection(record: Record, options, previous_result: Dict[str, Union[Dict
         run_module(record, module, options, module_results, timings)
         results = module_results.get(module.__name__)
         if results:
+            logging.debug("Adding detection results from %s to record", module.__name__)
             results.add_to_record(record)
 
     # generate cluster predictions
@@ -206,12 +230,13 @@ def run_detection(record: Record, options, previous_result: Dict[str, Union[Dict
         run_module(record, module, options, module_results, timings)
         results = module_results.get(module.__name__)
         if results:
+            logging.debug("Adding detection results from %s to record", module.__name__)
             results.add_to_record(record)
 
     return timings
 
 
-def regenerate_results_for_record(record: Record, options, modules: List[ModuleType],
+def regenerate_results_for_record(record: Record, options: ConfigType, modules: List[ModuleType],
                                   previous_result: Dict[str, Dict]
                                   ) -> Dict[str, Optional[ModuleResults]]:
     """ Converts a record's JSON results to ModuleResults per module
@@ -247,7 +272,8 @@ def regenerate_results_for_record(record: Record, options, modules: List[ModuleT
     return previous_result
 
 
-def run_module(record, module, options, module_results, timings) -> None:
+def run_module(record: Record, module: ModuleType, options: ConfigType,
+               module_results: Dict[str, Optional[ModuleResults]], timings: Dict[str, float]) -> None:
     """ Run analysis modules on a record
 
         Arguments:
@@ -263,7 +289,7 @@ def run_module(record, module, options, module_results, timings) -> None:
                      module, will be updated with the module timing
 
         Returns:
-            the time taken to run the module as a float
+            None
         """
 
     logging.debug("Checking if %s should be run", module.__name__)
@@ -282,7 +308,8 @@ def run_module(record, module, options, module_results, timings) -> None:
     timings[module.__name__] = duration
 
 
-def analyse_record(record, options, modules, previous_result) -> Dict[str, float]:
+def analyse_record(record: Record, options: ConfigType, modules: List[ModuleType],
+                   previous_result: Dict[str, Dict[str, Any]]) -> Dict[str, float]:
     """ Run analysis modules on a record
 
         Arguments:
@@ -299,7 +326,7 @@ def analyse_record(record, options, modules, previous_result) -> Dict[str, float
             a dictionary mapping module name to time taken
     """
     module_results = regenerate_results_for_record(record, options, modules, previous_result)
-    timings = {}
+    timings = {}  # type: Dict[str, float]
     # try to run the given modules over the record
     logging.info("Analysing record: %s", record.id)
     for module in modules:
@@ -333,7 +360,7 @@ def prepare_output_directory(name: str, input_file: str) -> None:
         os.mkdir(name)
 
 
-def write_profiling_results(profiler, target) -> None:
+def write_profiling_results(profiler: cProfile.Profile, target: str) -> None:
     """ Write profiling files to file in human readable form and as a binary
         blob for external tool use (with the extra extension '.bin').
 
@@ -365,7 +392,7 @@ def write_profiling_results(profiler, target) -> None:
         print(stream.getvalue())
 
 
-def write_outputs(results, options) -> None:
+def write_outputs(results: serialiser.AntismashResults, options: ConfigType) -> None:
     """ Write output files (webpage, genbank files, etc) to the output directory
 
         Arguments:
@@ -406,7 +433,7 @@ def write_outputs(results, options) -> None:
     assert os.path.exists(zipfile)
 
 
-def annotate_records(results) -> None:
+def annotate_records(results: serialiser.AntismashResults) -> None:
     """ Annotates all analysed records with the results generated from them
 
         Arguments:
@@ -451,16 +478,19 @@ def read_data(sequence_file, options) -> serialiser.AntismashResults:
     if sequence_file:
         records = record_processing.parse_input_sequence(sequence_file, options.taxon,
                                 options.minlength, options.start, options.end)
-        return serialiser.AntismashResults(sequence_file.rsplit(os.sep, 1)[-1],
+        results = serialiser.AntismashResults(sequence_file.rsplit(os.sep, 1)[-1],
                                            records, [{} for i in range(len(records))],
                                            __version__)
+        update_config({"input_file": os.path.splitext(results.input_file)[1]})
+    else:
+        logging.debug("Attempting to reuse previous results in: %s", options.reuse_results)
+        with open(options.reuse_results) as handle:
+            contents = handle.read()
+            if not contents:
+                raise ValueError("No results contained in file: %s" % options.reuse_results)
+        results = serialiser.AntismashResults.from_file(options.reuse_results, options.taxon)
 
-    logging.debug("Attempting to reuse previous results in: %s", options.reuse_results)
-    with open(options.reuse_results) as handle:
-        contents = handle.read()
-        if not contents:
-            raise ValueError("No results contained in file: %s" % options.reuse_results)
-    results = serialiser.AntismashResults.from_file(options.reuse_results, options.taxon)
+    update_config({"input_file": os.path.splitext(results.input_file)[0]})
     return results
 
 
@@ -483,9 +513,9 @@ def check_prerequisites(modules: List[ModuleType]) -> None:
         if res:
             errors_by_module[module.__name__] = res
     if errors_by_module:
-        for module, errors in errors_by_module.items():
+        for module_name, errors in errors_by_module.items():
             for error in errors:
-                logging.error("%s: preqrequisite failure: %s", module, error)
+                logging.error("%s: preqrequisite failure: %s", module_name, error)
         raise RuntimeError("Modules failing prerequisites")
 
 
@@ -528,7 +558,7 @@ def log_module_runtimes(timings: Dict[str, Dict[str, float]]) -> None:
         logging.debug("  %s: %.1fs", module, runtime)
 
 
-def run_antismash(sequence_file: Optional[str], options) -> int:
+def run_antismash(sequence_file: Optional[str], cmdline_options: argparse.Namespace) -> int:
     """ The complete antismash pipeline. Reads in data, runs detection and
         analysis modules over any records found, then outputs the results to
         file.
@@ -536,7 +566,7 @@ def run_antismash(sequence_file: Optional[str], options) -> int:
         Arguments:
             sequence_file: the sequence file to read in records from, can be
                             None if reusing results
-            options: command line options as an argparse.Namespace
+            cmdline_options: command line options as an argparse.Namespace
             detection_modules: None or a list of modules to use for detection,
                                 if None defaults will be used
             analysis_modules: None or a list of modules to use for analysis,
@@ -546,22 +576,21 @@ def run_antismash(sequence_file: Optional[str], options) -> int:
             0 if requested operations completed succesfully, otherwise 1
             Exceptions may also be raised
     """
-    logfile = options.logfile
-    setup_logging(logfile=logfile, verbose=options.verbose,
-                  debug=options.debug)
+    setup_logging(logfile=cmdline_options.logfile, verbose=cmdline_options.verbose,
+                  debug=cmdline_options.debug)
 
     detection_modules = get_detection_modules()
     analysis_modules = get_analysis_modules()
     modules = detection_modules + analysis_modules
 
-    if options.list_plugins:
+    if cmdline_options.list_plugins:
         list_plugins(modules)
         return 0
 
-    options.all_enabled_modules = [module for module in modules if module.is_enabled(options)]
+    cmdline_options.all_enabled_modules = [module for module in modules if module.is_enabled(cmdline_options)]
     # converts from a namespace to an antismash.config.Config instance so
     # modules can't fiddle with it
-    options = update_config(options)
+    options = update_config(cmdline_options)
 
     if options.check_prereqs_only:
         try:

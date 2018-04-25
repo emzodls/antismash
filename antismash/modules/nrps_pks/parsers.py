@@ -168,14 +168,15 @@ def update_prediction(locus: str, preds: Dict[str, str], target: str,
                 preds[key] = mapping.get(current, current)
 
 
-def modify_monomer_predictions(genes: List[CDSFeature], predictions: Dict) -> None:
+def modify_monomer_predictions(genes: List[CDSFeature], predictions: Dict[str, str]) -> None:
     """ Modifies monomer predictions based on domain construction chain. Changes
         the predictions in place.
 
         Arguments:
             genes: a dictionary mapping gene name to a list of domain names
                           in the order they are found in the gene
-            predictions:
+            predictions: a dict mapping domain label (e.g. nrpspksdomains_SCO123_AT1)
+                         to a prediction for that domain
 
         Returns:
             None

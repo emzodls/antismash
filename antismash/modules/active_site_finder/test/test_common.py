@@ -17,8 +17,12 @@ from antismash.modules.active_site_finder.common import ActiveSiteAnalysis, Alig
 
 class TestCommon(unittest.TestCase):
     def test_get_signature(self):
-        query = "TYLVTGGAGGIGGQLALWLAD-QGARHLLLTGRS-A-L--PEQdavvsethpqaTAVAVLRQLRERGVNVTYKAVDVADAHAMQATLESRRRA-GM--PPVRGVFHAAGVIDYTLLSDMSGAEMDRVLAAKVSGAWNLHRLLR-EES----VEAFVLFSSGSALLSSPMLGGYAAGNAFLDALAHHRHAQGL--SGTVVNWGFWD--"
-        aln = "tYLitGGlGGLGlslArWLaerrGARrLvLlSRslglpllpsp...........eaqellaeLealGarVrvvacDVtdraavrrllaeiraldtlespPirGViHaAgVLrDallenmtaedfrrVlaPKVdGawnLHeatreddppegsLDFFvlFSSiagllGnpGQanYAAANaFLDAlAryRRarGLRGpAlsinWGaWadv"
+        query = ("TYLVTGGAGGIGGQLALWLAD-QGARHLLLTGRS-A-L--PEQdavvsethpqaTAVAVLRQLRERGVNVTYKAVDVADAH"
+                 "AMQATLESRRRA-GM--PPVRGVFHAAGVIDYTLLSDMSGAEMDRVLAAKVSGAWNLHRLLR-EES----VEAFVLFSSGS"
+                 "ALLSSPMLGGYAAGNAFLDALAHHRHAQGL--SGTVVNWGFWD--")
+        aln = ("tYLitGGlGGLGlslArWLaerrGARrLvLlSRslglpllpsp...........eaqellaeLealGarVrvvacDVtdraav"
+               "rrllaeiraldtlespPirGViHaAgVLrDallenmtaedfrrVlaPKVdGawnLHeatreddppegsLDFFvlFSSiagllG"
+               "npGQanYAAANaFLDAlAryRRarGLRGpAlsinWGaWadv")
         positions = [102]
 
         assert get_signature(query, aln, positions) == "Y"
@@ -29,7 +33,8 @@ class TestCommon(unittest.TestCase):
 
 class TestAlignment(unittest.TestCase):
     def setUp(self):
-        self.domain = PFAMDomain(FeatureLocation(1, 6), "description", domain="p450")
+        self.domain = PFAMDomain(FeatureLocation(1, 6), "description",
+                                 protein_start=3, protein_end=5, domain="p450")
         self.alignment = Alignment(self.domain, "WLAD-QGAR", "WLaer.rGA", 10, 19)
 
     def test_extract_position(self):
@@ -58,7 +63,8 @@ class TestAlignment(unittest.TestCase):
 
 class TestAnalysisCore(unittest.TestCase):
     def setUp(self):
-        self.domain = PFAMDomain(FeatureLocation(1, 6), "description", domain="p450")
+        self.domain = PFAMDomain(FeatureLocation(1, 6), "description",
+                                 protein_start=3, protein_end=5, domain="p450")
 
     def tearDown(self):
         restore()
@@ -131,7 +137,8 @@ class TestAnalysisCore(unittest.TestCase):
 
 class TestScaffoldMatching(unittest.TestCase):
     def setUp(self):
-        domain = PFAMDomain(FeatureLocation(1, 6), "description", domain="p450")
+        domain = PFAMDomain(FeatureLocation(1, 6), "description",
+                            protein_start=3, protein_end=5, domain="p450")
         self.alignment = Alignment(domain, "WLAD-QGAR", "WLae.rGAR", 10, 19)
 
     def create_analysis(self, positions, expected):

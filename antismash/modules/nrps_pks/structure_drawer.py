@@ -5,16 +5,15 @@
     image format, where possible
 """
 
-import shutil
 import os
 import logging
 from typing import Dict
 
-from helperlibs.wrappers.io import TemporaryDirectory
-
 import antismash.common.path as path
+from antismash.common.secmet import Record
+from antismash.config import ConfigType
 
-def gen_smiles_from_pksnrps(compound_pred, cluster_number: int) -> str:
+def gen_smiles_from_pksnrps(compound_pred: str, cluster_number: int) -> str:
     """ Generates the SMILES string for a specific compound prediction """
     smiles = ""
     residues = compound_pred.replace("(", "").replace(")", "").replace(" + ", " ").replace("-", " ").split(" ")
@@ -51,7 +50,7 @@ def gen_smiles_from_pksnrps(compound_pred, cluster_number: int) -> str:
     return smiles
 
 
-def generate_chemical_structure_preds(compound_predictions, record, options) -> None:
+def generate_chemical_structure_preds(compound_predictions, record: Record, options: ConfigType) -> None:
     """ Generates the SMILES strings for each cluster """
     # Create directory to store structures
     structures_dir = os.path.abspath(os.path.join(options.output_dir, "structures"))
@@ -92,5 +91,3 @@ def load_smiles() -> Dict[str, str]:
 
     smiles_monomer.close()
     return aa_smiles
-
-
