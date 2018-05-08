@@ -14,7 +14,7 @@ from Bio.SeqFeature import ExactPosition, BeforePosition, AfterPosition, \
                            SeqFeature
 from helperlibs.wrappers.io import TemporaryDirectory
 
-import antismash.common.serialiser as serialiser
+from antismash.common import serialiser
 from antismash.common.secmet import Record
 from antismash.common.test.helpers import get_path_to_nisin_genbank
 
@@ -115,7 +115,8 @@ class TestResultsJSON(unittest.TestCase):
         filename = get_path_to_nisin_genbank()
         records = list(seqio.parse(open(filename), "genbank"))
         records = [Record.from_biopython(rec, taxon="bacteria") for rec in records]
-        results = serialiser.AntismashResults(filename, records, [{}, {}, {}], "dummy")
+        rec_results = [{}, {}, {}]
+        results = serialiser.AntismashResults(filename, records, rec_results, "dummy")
         json_handle = StringIO()
         results.write_to_file(json_handle)
         json_handle.seek(0)

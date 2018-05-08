@@ -8,25 +8,29 @@
 from collections import OrderedDict
 import json
 import logging
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, IO, List, Optional, Union
 
 import Bio.Alphabet
 import Bio.Alphabet.IUPAC
 from Bio.Seq import Seq
 from Bio.SeqFeature import ExactPosition, BeforePosition, AfterPosition, \
                            UnknownPosition, FeatureLocation, CompoundLocation, \
-                           SeqFeature, Reference
+                           SeqFeature, Reference, AbstractPosition
 from Bio.SeqRecord import SeqRecord
 
 from antismash.common.module_results import ModuleResults
 from antismash.common.secmet import Record
+from antismash.config import get_config
+from antismash.typing import AntismashModule
 
 
 class AntismashResults:
     """ A single repository of all results of an antismash run, including input
         filename, records and individual module results
     """
-    def __init__(self, input_file, records, results, version, timings=None):
+    def __init__(self, input_file: str, records: List[Record],
+                 results: List[Dict[str, Union[ModuleResults, Dict[str, Any]]]],
+                 version: str, timings: Dict[str, Dict[str, float]] = None) -> None:
         self.input_file = input_file
         self.records = records
         self.results = results
@@ -34,7 +38,7 @@ class AntismashResults:
         self.timings_by_record = timings or {}  # {record_id : {module name: time}}
 
     @staticmethod
-    def from_file(handle, taxon: str) -> "AntismashResults":
+    def from_file(handle: Union[str, IO], taxon: str) -> "AntismashResults":
         """ Regenerates an instance of AntismashResults from JSON representation
             in a file
         """
@@ -57,7 +61,7 @@ class AntismashResults:
         res["timings"] = self.timings_by_record
         return res
 
-    def write_to_file(self, handle) -> None:
+    def write_to_file(self, handle: Union[str, IO]) -> None:
         """ Writes a JSON representation of the instance to the given filename
             or handle
         """
@@ -66,7 +70,8 @@ class AntismashResults:
         handle.write(json.dumps(self.to_json()))
 
 
-def dump_records(records, results, handle=None) -> List[Dict[str, Any]]:
+def dump_records(records: List[SeqRecord], results: List[Dict[str, Union[Dict[str, Any], ModuleResults]]],
+                 handle: Union[str, IO] = None) -> List[Dict[str, Any]]:
     """ Converts a list of records and a list of results to a JSON object.
 
         Arguments:
@@ -116,6 +121,7 @@ def dump_records(records, results, handle=None) -> List[Dict[str, Any]]:
         handle = open(handle, "w")
     handle.write(new_contents)
     return data
+
 
 def record_to_json(record: SeqRecord) -> Dict[str, Any]:
     """ Constructs a JSON object representing a SeqRecord """
@@ -217,7 +223,7 @@ def location_from_json(data: str) -> FeatureLocation:
         Converts from json representation (a string), e.g. [<1:6](-), to a
         FeatureLocation or CompoundLocation
     """
-    def parse_position(string: str):
+    def parse_position(string: str) -> AbstractPosition:
         """ Converts a positiong from a string into a Position subclass """
         if string[0] == '<':
             return BeforePosition(int(string[1:]))
@@ -242,7 +248,7 @@ def location_from_json(data: str) -> FeatureLocation:
         elif '(' not in string:
             strand = None
         else:
-            raise ValueError("Cannot identify strand in location: %s", string)
+            raise ValueError("Cannot identify strand in location: %s" % string)
 
         return FeatureLocation(start, end, strand=strand)
 
@@ -257,3 +263,41 @@ def location_from_json(data: str) -> FeatureLocation:
 
     locations = [parse_single_location(part) for part in combined_location.split(', ')]
     return CompoundLocation(locations, operator=operator)
+
+
+def regenerate_results_for_record(record: Record, modules: List[AntismashModule],
+                                  previous_result: Dict[str, Dict[str, Any]]
+                                  ) -> Dict[str, Optional[ModuleResults]]:
+    """ Converts a record's JSON results to ModuleResults per module.
+
+        Arguments:
+            record: the record to regenerate results for
+            modules: the modules to regenerate results of
+            previous_result: a dict of the json results to convert, in the form:
+                    {modulename : {module details}}
+
+        Returns:
+            the previous_result dict, with the values of all modules provided
+            as an instance of ModuleResults or None if results don't apply or
+            could not be regenerated
+    """
+    options = get_config()
+
+    # skip if nothing to work with
+    if not previous_result:
+        return {}
+
+    regenerated = {}
+    logging.debug("Regenerating results for record %s", record.id)
+    for module in modules:
+        section = previous_result.pop(module.__name__, None)
+        results = None
+        if section:
+            logging.debug("Regenerating results for module %s", module.__name__)
+            results = module.regenerate_previous_results(section, record, options)
+            if results is None:
+                logging.debug("Results could not be generated for %s", module.__name__)
+            else:
+                assert isinstance(results, ModuleResults), type(results)
+            regenerated[module.__name__] = results
+    return regenerated

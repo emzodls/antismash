@@ -20,6 +20,10 @@ from typing import Any, Dict, List
 
 from antismash.common import path
 from antismash.common.secmet import Record
+<<<<<<< .merge_file_hE2nxZ
+=======
+from antismash.config import ConfigType
+>>>>>>> .merge_file_RSb14C
 from antismash.config.args import ModuleArgs
 
 from .config import get_config
@@ -52,22 +56,38 @@ def get_arguments() -> ModuleArgs:
     return args
 
 
+<<<<<<< .merge_file_hE2nxZ
 def check_options(_options) -> List[str]:
+=======
+def check_options(_options: ConfigType) -> List[str]:
+>>>>>>> .merge_file_RSb14C
     """ No options here to check, so just return """
     return []
 
 
+<<<<<<< .merge_file_hE2nxZ
 def is_enabled(options):
+=======
+def is_enabled(options: ConfigType) -> bool:
+>>>>>>> .merge_file_RSb14C
     """ Will the module run with the given options """
     return not options.minimal or options.lassopeptides_enabled
 
 
+<<<<<<< .merge_file_hE2nxZ
 def regenerate_previous_results(previous: Dict[str, Any], record: Record, _options) -> LassoResults:
+=======
+def regenerate_previous_results(previous: Dict[str, Any], record: Record, _options: ConfigType) -> LassoResults:
+>>>>>>> .merge_file_RSb14C
     """ Regenerate a results object from the given data """
     return LassoResults.from_json(previous, record)
 
 
+<<<<<<< .merge_file_hE2nxZ
 def run_on_record(record: Record, results: LassoResults, _options) -> LassoResults:
+=======
+def run_on_record(record: Record, results: LassoResults, _options: ConfigType) -> LassoResults:
+>>>>>>> .merge_file_RSb14C
     """ Finds all precursors within lassopeptide clusters """
     if results and isinstance(results, LassoResults):
         return results

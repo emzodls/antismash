@@ -4,10 +4,11 @@
 # for test files, silence irrelevant and noisy pylint warnings
 # pylint: disable=no-self-use,protected-access,missing-docstring
 
+from collections import OrderedDict
 import unittest
 import os
-from minimock import mock, restore
 
+from minimock import mock, restore
 from helperlibs.wrappers.io import TemporaryDirectory
 
 from antismash.common.secmet import Record
@@ -57,7 +58,7 @@ class TestBlastParsing(unittest.TestCase):
         for subject in subjects:
             self.assertTrue(subject.genecluster in cluster_name_to_queries)
             subject_clusters.add(subject.genecluster)
-        self.assertEqual(sorted(subject_clusters), sorted(cluster_name_to_queries.keys()))
+        self.assertEqual(sorted(subject_clusters), sorted(cluster_name_to_queries))
 
     def test_blastparse(self):
         queries, clusters = core.blastparse(self.sample_data, Record(), 0, 0)
@@ -102,9 +103,9 @@ class TestBlastParsing(unittest.TestCase):
                                 Record(), coverage_threshold, ident_threshold)
             # make sure we only found one cluster number
             self.assertEqual(len(clusters_by_number), 1)
-            self.assertEqual(list(clusters_by_number.keys()), [24])
+            self.assertEqual(list(clusters_by_number), [24])
             self.assertEqual(len(queries_by_number), 1)
-            self.assertEqual(list(queries_by_number.keys()), [24])
+            self.assertEqual(list(queries_by_number), [24])
 
             # now test the values of those queries
             queries = queries_by_number[24]
@@ -145,9 +146,9 @@ class TestBlastParsing(unittest.TestCase):
         sample_data = self.read_sample_data("data/diamond_output_sample_multicluster.txt")
         clusters_by_number, queries_by_number = core.parse_all_clusters(sample_data, Record(), 0, 0)
         self.assertEqual(len(clusters_by_number), 3)
-        self.assertEqual(sorted(clusters_by_number.keys()), [1, 2, 4])
+        self.assertEqual(sorted(clusters_by_number), [1, 2, 4])
         self.assertEqual(len(queries_by_number), 3)
-        self.assertEqual(sorted(queries_by_number.keys()), [1, 2, 4])
+        self.assertEqual(sorted(queries_by_number), [1, 2, 4])
         for i in [1, 2, 4]:
             self.assertEqual(len(clusters_by_number[i]), i)
             self.assertEqual(len(queries_by_number[i]), i)
@@ -189,7 +190,7 @@ class TestQuery(unittest.TestCase):
         for container in containers:
             self.assertEqual(len(container), 1)
         self.assertEqual(query.cluster_name_to_subjects["a"], [sub1])
-        assert list(query.subjects.keys()) == ["a1"]
+        assert list(query.subjects) == ["a1"]
         sub2 = core.Subject("a2", "b", 1, 2, "+", "c", 0.5, 1, 0.5, 1e-8, "loc")
         query.add_subject(sub2)
         for container in containers:
@@ -205,7 +206,7 @@ class TestQuery(unittest.TestCase):
         self.assertEqual(query.cluster_name_to_subjects["a"], [sub1, sub3])
         self.assertEqual(query.cluster_name_to_subjects["b"], [sub2])
         # check ordering preserved on subject names
-        self.assertEqual(list(query.subjects.keys()), ["a1", "a2", "a3"])
+        self.assertEqual(list(query.subjects), ["a1", "a2", "a3"])
 
         # check the getter has the same results as direct access
         self.assertEqual(query.get_subjects_by_cluster("a"), [sub1, sub3])
@@ -303,8 +304,8 @@ class TestSubjectParsing(unittest.TestCase):
         self.assertEqual(sub.evalue, 7.2e-129)
         self.assertEqual(sub.locus_tag, "CAG25751")
         self.assertEqual(sub.genecluster, "Y16952_c1")
-        self.assertEqual(sub.start, "1")
-        self.assertEqual(sub.end, "759")
+        self.assertEqual(sub.start, 1)
+        self.assertEqual(sub.end, 759)
         self.assertEqual(sub.strand, "-")
         self.assertEqual(sub.perc_ident, 100)
         self.assertEqual(sub.perc_coverage, 100.)
@@ -457,3 +458,90 @@ class TestInputGeneration(unittest.TestCase):
                     assert contents.count(">") == chunk_size
                     expected = "".join(">L{0}\nS{0}\n".format(i + index * chunk_size) for i in range(chunk_size))
                     assert contents == expected
+
+
+class TestOrthologousGroups(unittest.TestCase):
+    def setUp(self):
+        self.query_lines = ["input|c1|0-759|-|CAG25751.1|putative",
+                            "input|c1|0-759|-|CAG25751.2|putative",
+                            "input|c1|0-759|-|CAG25751.3|putative"]
+        self.queries = OrderedDict()
+        for line in self.query_lines:
+            self.queries[line] = core.Query(line, 0)
+            assert not self.queries[line].subjects
+
+    def run_base_comparison(self, clusters):
+        groups = core.find_internal_orthologous_groups(self.queries, clusters)
+        assert groups and len(groups) <= len(clusters)
+        return groups
+
+    def set_query_subjects(self, index, subjects):
+        self.queries[self.query_lines[index]].subjects = subjects
+
+    def set_independent_subjects(self):
+        self.set_query_subjects(0, ["a1", "a2", "a3"])
+        self.set_query_subjects(1, ["b1", "b2", "b3"])
+        self.set_query_subjects(2, ["c1", "c2", "c3"])
+
+    def test_no_subjects_and_single_not_present(self):
+        groups = self.run_base_comparison(["other|c1|0-759|-|other_1|putative"])
+        assert groups == [["other_1"]]
+
+    def test_no_subjects_and_multiple_not_present(self):
+        groups = self.run_base_comparison(["other|c1|0-759|-|other_1|putative",
+                                           "other|c1|0-759|-|other_2|putative"])
+        assert groups == [["other_1"], ["other_2"]]
+
+    def test_no_subjects_and_clusters_present(self):
+        groups = self.run_base_comparison(self.query_lines[::2])
+        assert groups == [["CAG25751.1"], ["CAG25751.3"]]
+
+    def test_independent_subjects_and_not_present(self):
+        self.set_independent_subjects()
+        clusters = ["other|c1|0-759|-|other_1|putative", "other|c1|0-759|-|other_2|putative"]
+        groups = self.run_base_comparison(clusters)
+        assert groups == [["other_1"], ["other_2"]]
+
+    def test_independent_subjects_and_clusters_present(self):  # pylint: disable=invalid-name
+        self.set_independent_subjects()
+        groups = self.run_base_comparison(self.query_lines)
+        assert groups == [['CAG25751.1', 'a1', 'a2', 'a3'],
+                          ['CAG25751.2', 'b1', 'b2', 'b3'],
+                          ['CAG25751.3', 'c1', 'c2', 'c3']]
+
+    def test_partial_overlapping_subjects_and_not_present(self):  # pylint: disable=invalid-name
+        self.set_independent_subjects()
+        self.set_query_subjects(1, ["b1", "a2", "b3"])
+        clusters = ["other|c1|0-759|-|other_1|putative", "other|c1|0-759|-|other_2|putative"]
+        groups = self.run_base_comparison(clusters)
+        assert groups == [["other_1"], ["other_2"]]
+
+    def test_partial_overlapping_subjects_and_present(self):  # pylint: disable=invalid-name
+        self.set_independent_subjects()
+        self.set_query_subjects(1, ["b1", "a2", "b3"])
+        groups = self.run_base_comparison(self.query_lines)
+        assert groups == [['CAG25751.1', 'CAG25751.2', 'a1', 'a2', 'a3', 'b1', 'b3'],
+                          ['CAG25751.3', 'c1', 'c2', 'c3']]
+
+    def test_multiple_overlapping_and_not_present(self):
+        self.set_independent_subjects()
+        self.set_query_subjects(1, ["b1", "a2", "b3"])
+        clusters = ["other|c1|0-759|-|other_1|putative", "other|c1|0-759|-|other_2|putative"]
+        groups = self.run_base_comparison(clusters)
+        assert groups == [["other_1"], ["other_2"]]
+
+    def test_multiple_overlapping_and_present(self):
+        self.set_independent_subjects()
+        self.set_query_subjects(1, ["b1", "a2", "c3"])
+        groups = self.run_base_comparison(self.query_lines)
+        assert groups == [['CAG25751.1', 'CAG25751.2', 'CAG25751.3', 'a1', 'a2', 'a3', 'b1', 'c1', 'c2', 'c3']]
+
+    def test_with_uniqueness_modifier(self):
+        # tests that the 'h_' prefix used to differentiate names is removed
+        # if this test breaks because a better naming system is implemented, that's fine
+        self.set_independent_subjects()
+        self.set_query_subjects(2, ["_c1", "h_c2", "c_3"])
+        groups = self.run_base_comparison(self.query_lines)
+        assert groups == [['CAG25751.1', 'a1', 'a2', 'a3'],
+                          ['CAG25751.2', 'b1', 'b2', 'b3'],
+                          ['CAG25751.3', '_c1', 'c2', 'c_3']]

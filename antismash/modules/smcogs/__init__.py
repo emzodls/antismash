@@ -13,6 +13,8 @@ from typing import Any, Dict, List, Optional
 
 from antismash.common import path, subprocessing, hmmscan_refinement
 from antismash.common.module_results import ModuleResults
+from antismash.common.secmet import Record
+from antismash.config import ConfigType
 from antismash.config.args import ModuleArgs
 
 from .trees import generate_trees
@@ -28,11 +30,11 @@ class SMCOGResults(ModuleResults):
     """
     schema_version = 1
 
-    def __init__(self, record_id):
+    def __init__(self, record_id: str) -> None:
         super().__init__(record_id)
-        self.tree_images = {}  # gene_id -> tree filename
-        self.best_hits = {}  # gene_id -> best HMM result
-        self.relative_tree_path = None  # path where tree images are saved
+        self.tree_images = {}  # type: Dict[str, str] # gene_id -> tree filename
+        self.best_hits = {}  # type: Dict[str, hmmscan_refinement.HMMResult] # gene_id -> best HMM result
+        self.relative_tree_path = None  # type: str # path where tree images are saved
 
     def to_json(self) -> Dict[str, Any]:
         return {"schema_version": self.schema_version,
@@ -43,8 +45,12 @@ class SMCOGResults(ModuleResults):
                 "image_dir": self.relative_tree_path}
 
     @staticmethod
-    def from_json(json, _record) -> "SMCOGResults":
+    def from_json(json: Dict[str, Any], record: Record) -> "SMCOGResults":
         if json.get("schema_version") != SMCOGResults.schema_version:
+            logging.debug("Schema version mismatch, discarding SMCOGs results")
+            return None
+        if record.id != json.get("record_id"):
+            logging.debug("Record ID mismatch, discarding SMCOGs results")
             return None
         results = SMCOGResults(json["record_id"])
         for hit, parts in json["best_hits"].items():
@@ -55,7 +61,7 @@ class SMCOGResults(ModuleResults):
             results.tree_images = json["tree_paths"]
         return results
 
-    def add_to_record(self, record) -> None:
+    def add_to_record(self, record: Record) -> None:
         """ Annotate smCOGS in CDS features """
         functions = load_cog_annotations()
         logging.debug("annotating genes with SMCOGS info: %d genes", len(self.best_hits))
@@ -71,7 +77,7 @@ class SMCOGResults(ModuleResults):
                 feature.notes.append("smCOG tree PNG image: smcogs/%s" % self.tree_images[gene_id])
 
 
-def check_options(options) -> List[str]:
+def check_options(options: ConfigType) -> List[str]:
     """ Checks options for problems. """
     if options.smcogs_trees and (options.minimal and not options.smcogs_enabled):
         logging.debug("SMCOG trees enabled, but not classifications, running both anyway")
@@ -94,16 +100,17 @@ def get_arguments() -> ModuleArgs:
     return group
 
 
-def is_enabled(options) -> bool:
+def is_enabled(options: ConfigType) -> bool:
     """ Enabled if tree generation is requested or classification not disabled """
     return not options.minimal or options.smcogs_enabled or options.smcogs_trees
 
 
-def regenerate_previous_results(results, record, options) -> Optional[SMCOGResults]:
+def regenerate_previous_results(results: Dict[str, Any], record: Record, options: ConfigType
+                                ) -> Optional[SMCOGResults]:
     """ Reconstructs the previous results, unless the trees weren't generated
         previously or a previously generated tree output file is missing.
     """
-    if not results or record.id != results["record_id"]:
+    if not results:
         return None
     if options.smcogs_trees and not results["tree_paths"]:
         # trees have to be regenerated, so don't reuse
@@ -140,7 +147,7 @@ def check_prereqs() -> List[str]:
     return failure_messages
 
 
-def run_on_record(record, results, options) -> SMCOGResults:
+def run_on_record(record: Record, results: Optional[SMCOGResults], options: ConfigType) -> SMCOGResults:
     """ Classifies gene functions and, if requested, generates phylogeny trees
         of the classifications
     """

@@ -8,7 +8,6 @@ import functools
 import logging
 import re
 import os
-from types import ModuleType
 from typing import Any, Callable, List, Set, Tuple, Union
 
 import Bio
@@ -19,6 +18,7 @@ from helperlibs.bio import seqio
 from antismash.common import gff_parser
 from antismash.common.secmet import Record
 from antismash.config import get_config, update_config, ConfigType
+from antismash.typing import AntismashModule
 
 from .subprocessing import parallel_function
 
@@ -151,7 +151,7 @@ def ensure_cds_info(single_entry: bool, genefinding: Callable[[Record, Any], Non
     return sequence
 
 
-def pre_process_sequences(sequences: List[Record], options: ConfigType, genefinding: ModuleType) -> List[Record]:
+def pre_process_sequences(sequences: List[Record], options: ConfigType, genefinding: AntismashModule) -> List[Record]:
     """ hmm
 
         - gaps removed
@@ -233,7 +233,7 @@ def pre_process_sequences(sequences: List[Record], options: ConfigType, genefind
                     warned = True
                 sequence.skip = "skipping all but first {0} meaningful records (--limit {0}) ".format(options.limit)
 
-    options = update_config({"triggered_limit": warned})  # TODO is there a better way
+    update_config({"triggered_limit": warned})  # TODO is there a better way
 
     # Check GFF suitability
     single_entry = False
@@ -243,6 +243,7 @@ def pre_process_sequences(sequences: List[Record], options: ConfigType, genefind
     if checking_required:
         # ensure CDS features have all relevant information
         logging.debug("Ensuring CDS features have all required information")
+        assert hasattr(genefinding, "run_on_record")
         partial = functools.partial(ensure_cds_info, single_entry, genefinding.run_on_record)
         sequences = parallel_function(partial, ([sequence] for sequence in sequences))
 
@@ -385,7 +386,7 @@ def fix_record_name_id(record: Record, all_record_ids: Set[str]) -> None:
             None
     """
 
-    def _shorten_ids(idstring):
+    def _shorten_ids(idstring: str) -> str:
         contigstrmatch = re.search(r"onti?g?(\d+)\b", idstring)
         if not contigstrmatch:
             # if there is a substring "[Ss]caf(fold)XXX" use this number

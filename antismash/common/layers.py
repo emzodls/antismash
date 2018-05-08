@@ -8,17 +8,55 @@
 """
 
 import os
-from types import ModuleType
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Tuple
 
 from antismash.config import ConfigType
-from antismash.common.secmet import Record, Cluster
 from antismash.common.module_results import ModuleResults
+from antismash.common.secmet import Record, Cluster
+from antismash.typing import AntismashModule
+
+
+class OptionsLayer:
+    """ A layer for the global Config options. """
+    def __init__(self, options: ConfigType) -> None:
+        self.options = options
+
+    def __getattr__(self, attr: str) -> Any:
+        if attr in self.__dict__:
+            return super().__getattribute__(attr)
+        return getattr(self.options, attr)
+
+    @property
+    def plugins(self) -> List[AntismashModule]:
+        """ A list of all modules """
+        from antismash.main import get_all_modules
+        return get_all_modules()
+
+    @property
+    def smcogs(self) -> bool:
+        """ Whether smcogs was enabled or not """
+        return (not self.options.minimal
+                or self.options.smcogs_enabled
+                or self.options.smcogs_trees)  # TODO work out a better way of doing this
+
+    def download_logfile(self) -> Optional[str]:
+        """ Returns the path of the logfile, if it was created (otherwise None) """
+        logfile_path = os.path.abspath(self.logfile)
+        if os.path.dirname(logfile_path).startswith(self.output_dir):
+            return logfile_path[len(self.output_dir) + 1:]
+        return None
+
+    @property
+    def base_url(self) -> str:
+        """ Returns the 'home' URL for fungismash/antismash """
+        if self.options.taxon == "fungi":
+            return self.options.urls.fungi_baseurl
+        return self.options.urls.bacteria_baseurl
 
 
 class RecordLayer:
     """ A layer for Record instances """
-    def __init__(self, record: Record, results: ModuleResults, options: ConfigType) -> None:
+    def __init__(self, record: Record, results: ModuleResults, options: OptionsLayer) -> None:
         self.results = results
         self.seq_record = record
         self.options = options
@@ -57,23 +95,24 @@ class ClusterLayer:
         self.record = record  # type: RecordLayer
         self.anchor_id = "r{}c{}".format(cluster_feature.parent_record.record_index,
                                          cluster_feature.get_cluster_number())
-        self.handlers = []  # type: List[ModuleType]
+        self.handlers = []  # type: List[AntismashModule]
         self.cluster_feature = cluster_feature  # type: Cluster
-        self.cluster_blast = []
-        self.knowncluster_blast = []
-        self.subcluster_blast = []
+
+        self.cluster_blast = []  # type: List[Tuple[str, str]]
+        self.knowncluster_blast = []  # type: List[Tuple[str, str]]
+        self.subcluster_blast = []  # type: List[Tuple[str, str]]
         if self.cluster_feature.knownclusterblast:
-            self.knowncluster_blast_generator()
+            self.knowncluster_blast = self.knowncluster_blast_generator()
         if self.cluster_feature.subclusterblast:
-            self.subcluster_blast_generator()
+            self.subcluster_blast = self.subcluster_blast_generator()
         if self.cluster_feature.clusterblast:
-            self.cluster_blast_generator()
+            self.cluster_blast = self.cluster_blast_generator()
 
         self.find_plugins_for_cluster()
         self.has_details = self.determine_has_details()
         self.has_sidepanel = self.determine_has_sidepanel()
 
-    def __getattr__(self, attr):
+    def __getattr__(self, attr: str) -> Any:
         if attr in self.__dict__:
             return super().__getattribute__(attr)
         return getattr(self.cluster_feature, attr)
@@ -112,36 +151,45 @@ class ClusterLayer:
 
         return description_text
 
-    def cluster_blast_generator(self) -> None:  # TODO: deduplicate
+    def cluster_blast_generator(self) -> List[Tuple[str, str]]:  # TODO: deduplicate
         """ Generates the details to use for clusterblast results """
         assert self.cluster_feature.clusterblast
         top_hits = self.cluster_feature.clusterblast[:self.record.options.cb_nclusters]
+        results = []
         for i, label in enumerate(top_hits):
             i += 1  # 1-indexed
-            svg_file = os.path.join('svg', 'clusterblast_r%dc%d_%s.svg' % (self.record.record_index, self.get_cluster_number(), i))
-            self.cluster_blast.append((label, svg_file))
+            svg_file = os.path.join('svg', 'clusterblast_r%dc%d_%s.svg' % (
+                            self.record.record_index, self.get_cluster_number(), i))
+            results.append((label, svg_file))
+        return results
 
-    def knowncluster_blast_generator(self) -> None:
+    def knowncluster_blast_generator(self) -> List[Tuple[str, str]]:
         """ Generates the details to use for knownclusterblast results """
         assert self.cluster_feature.knownclusterblast
         top_hits = self.cluster_feature.knownclusterblast[:self.record.options.cb_nclusters]
+        results = []
         for i, label_pair in enumerate(top_hits):
             i += 1  # 1-indexed
             label = label_pair[0]
-            svg_file = os.path.join('svg', 'knownclusterblast_r%dc%d_%s.svg' % (self.record.record_index, self.get_cluster_number(), i))
-            self.knowncluster_blast.append((label, svg_file))
+            svg_file = os.path.join('svg', 'knownclusterblast_r%dc%d_%s.svg' % (
+                            self.record.record_index, self.get_cluster_number(), i))
+            results.append((label, svg_file))
+        return results
 
-    def subcluster_blast_generator(self) -> None:
+    def subcluster_blast_generator(self) -> List[Tuple[str, str]]:
         """ Generates the details to use for subclusterblast results """
         assert self.cluster_feature.subclusterblast
         assert self.cluster_feature.subclusterblast is not None, self.cluster_feature.location
         top_hits = self.cluster_feature.subclusterblast[:self.record.options.cb_nclusters]
+        results = []
         for i, label in enumerate(top_hits):
             i += 1  # since one-indexed
-            svg_file = os.path.join('svg', 'subclusterblast_r%dc%d_%s.svg' % (self.record.record_index, self.get_cluster_number(), i))
-            self.subcluster_blast.append((label, svg_file))
+            svg_file = os.path.join('svg', 'subclusterblast_r%dc%d_%s.svg' % (
+                            self.record.record_index, self.get_cluster_number(), i))
+            results.append((label, svg_file))
+        return results
 
-    def find_plugins_for_cluster(self) -> List[ModuleType]:
+    def find_plugins_for_cluster(self) -> List[AntismashModule]:
         "Find a specific plugin responsible for a given gene cluster type"
         for plugin in self.record.options.plugins:
             if not hasattr(plugin, 'will_handle'):
@@ -167,41 +215,3 @@ class ClusterLayer:
             if hasattr(handler, "generate_sidepanel"):
                 return True
         return False
-
-
-class OptionsLayer:
-    """ A layer for the global Config options. """
-    def __init__(self, options):
-        self.options = options
-
-    def __getattr__(self, attr):
-        if attr in self.__dict__:
-            return super().__getattribute__(attr)
-        return getattr(self.options, attr)
-
-    @property
-    def plugins(self) -> List[ModuleType]:
-        """ A list of all modules """
-        from antismash.main import get_all_modules
-        return get_all_modules()
-
-    @property
-    def smcogs(self) -> bool:
-        """ Whether smcogs was enabled or not """
-        return (not self.options.minimal
-                or self.options.smcogs_enabled
-                or self.options.smcogs_trees)  # TODO work out a better way of doing this
-
-    def download_logfile(self) -> Optional[str]:
-        """ Returns the path of the logfile, if it was created (otherwise None) """
-        logfile_path = os.path.abspath(self.logfile)
-        if os.path.dirname(logfile_path).startswith(self.output_dir):
-            return logfile_path[len(self.output_dir) + 1:]
-        return None
-
-    @property
-    def base_url(self) -> str:
-        """ Returns the 'home' URL for fungismash/antismash """
-        if self.options.taxon == "fungi":
-            return self.options.urls.fungi_baseurl
-        return self.options.urls.bacteria_baseurl

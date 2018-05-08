@@ -7,6 +7,9 @@
 from collections import defaultdict
 from typing import Dict, List, Set, Union
 
+from Bio.SearchIO import QueryResult
+from Bio.SearchIO._model.hsp import HSP
+
 
 class HMMResult:
     """ A variant of HSP that allows for operations between multiple instances
@@ -22,7 +25,7 @@ class HMMResult:
         self.evalue = float(evalue)
         self.bitscore = float(bitscore)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return self.query_end - self.query_start
 
     def merge(self, other: "HMMResult") -> "HMMResult":
@@ -48,10 +51,10 @@ class HMMResult:
         return HMMResult(str(data["hit_id"]), int(data["query_start"]), int(data["query_end"]),
                          float(data["evalue"]), float(data["bitscore"]))
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return str(self)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "HMMResult(%s, %d, %d, evalue=%g, bitscore=%g)" % (self.hit_id,
                    self.query_start, self.query_end, self.evalue, self.bitscore)
 
@@ -147,7 +150,7 @@ def _merge_immediate_neigbours(domains: List[HMMResult], hmm_lengths: Dict[str, 
     return result
 
 
-def gather_by_query(results) -> Dict[str, Set[HMMResult]]:
+def gather_by_query(results: List[HSP]) -> Dict[str, Set[HMMResult]]:
     """ Generates a mapping of query id to all HMMResults for that query
 
         Arguments:
@@ -166,7 +169,7 @@ def gather_by_query(results) -> Dict[str, Set[HMMResult]]:
     return results_by_id
 
 
-def refine_hmmscan_results(hmmscan_results, hmm_lengths: Dict[str, int],
+def refine_hmmscan_results(hmmscan_results: List[QueryResult], hmm_lengths: Dict[str, int],
                            neighbour_mode: bool = False) -> Dict[str, List[HMMResult]]:
     """ Processes a list of QueryResult objects (from SearchIO.parse(..., 'hmmer3-text'))
             - merges domain fragments of the same ID

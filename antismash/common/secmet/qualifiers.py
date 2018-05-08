@@ -11,14 +11,28 @@ import logging
 import bisect
 from collections import defaultdict
 from enum import Enum, unique
-from typing import Dict, List, Set, Tuple, Optional, Union
+import re
+from typing import Any, Dict, Iterable, Iterator, List, Set, Sequence, Tuple, Optional, Union  # pylint: disable=unused-import
+
+
+def parse_format(fmt: str, data: str) -> Sequence[str]:
+    """ Reverse of str.format(), pulls values from an input string that match
+        positions of {} in a format string. Raises a ValueError if the match
+        cannot be found.
+    """
+    safe = fmt.replace('(', r'\(').replace(')', r'\)')
+    regex = "^{}$".format(safe.replace("{}", "(.+?)"))
+    res = re.search(regex, data)
+    if res is None:
+        raise ValueError("Could not match format %r to input %r" % (fmt, data))
+    return res.groups()
 
 
 class ActiveSiteFinderQualifier:
     """ A qualifier for tracking active sites found (or not found) within a CDS.
     """
-    def __init__(self):
-        self._hits = set()
+    def __init__(self) -> None:
+        self._hits = set()  # type: Set[str]
 
 <<<<<<< HEAD
 =======
@@ -49,7 +63,7 @@ class NRPSPKSQualifier(list):
 
         Can be used directly as a qualifier for Biopython's SeqFeature.
     """
-    class Domain:
+    class Domain:  # pylint: disable=too-few-public-methods
         """ Contains information about a NRPS/PKS domain, including predictions
             made by modules.
 
@@ -73,10 +87,10 @@ class NRPSPKSQualifier(list):
                 self.feature_name = None
             self.predictions = {}  # type: Dict[str, str] # method to prediction name
 
-        def __lt__(self, other: "Domain") -> bool:
+        def __lt__(self, other: "NRPSPKSQualifier.Domain") -> bool:
             return (self.start, self.end) < (other.start, other.end)
 
-        def __repr__(self):
+        def __repr__(self) -> str:
             return "NRPSPKSQualifier.Domain(%s, label=%s, start=%d, end=%d)" % (
                         self.name, self.label, self.start, self.end)
 
@@ -89,7 +103,7 @@ class NRPSPKSQualifier(list):
         self.subtypes = []  # type: List[str]
         self._domains = []  # type: List["NRPSPKSQualifier.Domain"]
         self._domain_names = []  # type: List[str]
-        self.predictions = {}
+        self.predictions = {}  # type: Dict[str, str]
         self.cal_counter = 0
         self.at_counter = 0
         self.kr_counter = 0
@@ -107,19 +121,19 @@ class NRPSPKSQualifier(list):
         """ Returns a list of domain names in order first to last position on the strand """
         return self._domain_names
 
-    def append(self, _value):
+    def append(self, _value: Any) -> None:
         raise NotImplementedError("Appending to this list won't work, use add_subtype() or add_domain()")
 
-    def extend(self, _values):
+    def extend(self, _values: Any) -> None:
         raise NotImplementedError("Extending this list won't work")
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.subtypes) + len(self._domains)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[str]:
         for domain in self.domains:
-            yield "NRPS/PKS Domain: %s (%s-%s). E-value: %s. Score: %s;" % (domain.name,
-                    domain.start, domain.end, domain.evalue, domain.bitscore)
+            base = "NRPS/PKS Domain: %s (%s-%s). E-value: %s. Score: %s;"
+            yield base % (domain.name, domain.start, domain.end, domain.evalue, domain.bitscore)
         for subtype in self.subtypes:
             yield "NRPS/PKS subtype: %s" % subtype
 
@@ -130,7 +144,8 @@ class NRPSPKSQualifier(list):
         assert isinstance(subtype, str)
         self.subtypes.append(subtype)
 
-    def add_domain(self, domain, feature_name: str) -> None:
+    # the domain type Any is only to avoid circular dependencies
+    def add_domain(self, domain: Any, feature_name: str) -> None:
         """ Adds a domain to the current set.
 
             Arguments:
@@ -178,46 +193,58 @@ class SecMetQualifier(list):
     """
     class Domain:
         """ A simple container for the information needed to create a domain """
-        def __init__(self, name: str, evalue: float, bitscore: float, nseeds: str,
+        qualifier_label = "{} (E-value: {}, bitscore: {}, seeds: {}, tool: {})"
+
+        def __init__(self, name: str, evalue: float, bitscore: float, nseeds: int,
                      tool: str) -> None:
             self.query_id = str(name)
             self.evalue = float(evalue)
             self.bitscore = float(bitscore)
-            self.nseeds = str(nseeds)  # TODO: will be int once all HMM inputs are cleaned up
+            self.nseeds = int(nseeds)
             self.tool = str(tool)
 
-        def __repr__(self):
+        def __repr__(self) -> str:
             return str(self)
 
-        def __str__(self):
-            ret = "{} E-value: {}, bitscore: {}, seeds: {}"
-            return ret.format(self.query_id, self.evalue, self.bitscore, self.nseeds)
+        def __str__(self) -> str:
+            return self.qualifier_label.format(self.query_id, self.evalue,
+                                               self.bitscore, self.nseeds, self.tool)
 
-    def __init__(self, products: Set[str], domains: Union[List["SecMetQualifier.Domain"], List[str]]) -> None:
-        self._domains = domains  # Domain instance or str
+        def to_json(self) -> List[Union[str, float, int]]:
+            """ Constructs a JSON-friendly representation of a Domain """
+            return [self.query_id, self.evalue, self.bitscore, self.nseeds, self.tool]
+
+        @classmethod
+        def from_string(cls, line: str) -> "SecMetQualifier.Domain":
+            """ Rebuilds a Domain from a string (e.g. from a genbank file) """
+            return cls.from_json(parse_format(cls.qualifier_label, line))
+
+        @classmethod
+        def from_json(cls, json: Sequence[Union[str, float]]) -> "SecMetQualifier.Domain":
+            """ Rebuilds a Domain from a JSON representation """
+            assert len(json) == 5, json
+            return cls(str(json[0]), float(json[1]), float(json[2]), int(json[3]), str(json[4]))
+
+    def __init__(self, products: Set[str], domains: List["SecMetQualifier.Domain"]) -> None:
+        self._domains = domains
         self.domain_ids = []  # type: List[str]
-        if domains and not isinstance(domains[0], str):  # SecMetResult
-            for domain in self._domains:
-                assert isinstance(domain, SecMetQualifier.Domain)
-                self.domain_ids.append(domain.query_id)
-        else:  # TODO: regenerate a Domain from the string
-            for domain in self._domains:
-                assert isinstance(domain, str)
-                self.domain_ids.append(domain.split()[0])
+        for domain in self._domains:
+            assert isinstance(domain, SecMetQualifier.Domain)
+            self.domain_ids.append(domain.query_id)
         self._products = set()  # type: Set[str]
         self.add_products(products)
         self.kind = "biosynthetic"
         super().__init__()
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[str]:
         yield "Type: %s" % self.clustertype
         yield "; ".join(map(str, self._domains))
         yield "Kind: %s" % self.kind
 
-    def append(self, _item):
+    def append(self, _item: Any) -> None:
         raise NotImplementedError("Appending to this list won't work")
 
-    def extend(self, _items):
+    def extend(self, _items: Iterable[Any]) -> None:
         raise NotImplementedError("Extending this list won't work")
 
     def add_products(self, products: Set[str]) -> None:
@@ -249,11 +276,11 @@ class SecMetQualifier(list):
         return "-".join(sorted(self.products))
 
     @staticmethod
-    def from_biopython(qualifier) -> "SecMetQualifier":
+    def from_biopython(qualifier: List[str]) -> "SecMetQualifier":
         """ Converts a BioPython style qualifier into a SecMetQualifier. """
-        domains = None
-        products = None
-        kind = None
+        domains = []
+        products = set()  # type: Set[str]
+        kind = "biosynthetic"
         if len(qualifier) != 3:
             raise ValueError("Cannot parse qualifier: %s" % qualifier)
         for value in qualifier:
@@ -263,12 +290,14 @@ class SecMetQualifier(list):
                 kind = value.split("Kind: ", 1)[1]
                 assert kind == "biosynthetic", kind  # since it's the only kind we have
             else:
-                domains = value.split("; ")
+                domain_strings = value.split("; ")
+                for domain_string in domain_strings:
+                    domains.append(SecMetQualifier.Domain.from_string(domain_string))
         if not (domains and products and kind):
             raise ValueError("Cannot parse qualifier: %s" % qualifier)
         return SecMetQualifier(products, domains)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return 3
 
 
@@ -300,7 +329,7 @@ class GeneFunction(Enum):
         for value in GeneFunction:
             if str(value) == label:
                 return value
-        raise ValueError("Unknown gene function label: %s", label)
+        raise ValueError("Unknown gene function label: %s" % label)
 
 
 class GeneFunctionAnnotations:
@@ -310,7 +339,7 @@ class GeneFunctionAnnotations:
     """
     slots = ["_annotations", "_by_tool", "_by_function"]
 
-    class GeneFunctionAnnotation:
+    class GeneFunctionAnnotation:  # pylint: disable=too-few-public-methods
         """ A single instance of an annotation. """
         slots = ["function", "tool", "description"]
 
@@ -322,22 +351,22 @@ class GeneFunctionAnnotations:
             self.tool = str(tool)
             self.description = str(description)
 
-        def __str__(self):
+        def __str__(self) -> str:
             return "%s (%s) %s" % (self.function, self.tool, self.description)
 
-        def __repr__(self):
+        def __repr__(self) -> str:
             return "GeneFunctionAnnotation(function=%r, tool='%s', '%s')" % (self.function, self.tool, self.description)
 
-    def __init__(self):
-        self._annotations = []
-        self._by_tool = defaultdict(list)
-        self._by_function = defaultdict(list)
+    def __init__(self) -> None:
+        self._annotations = []  # type: List["GeneFunctionAnnotations.GeneFunctionAnnotation"]
+        self._by_tool = defaultdict(list)  # type: Dict[str, List["GeneFunctionAnnotations.GeneFunctionAnnotation"]]
+        self._by_function = defaultdict(list)  # type: Dict[GeneFunction, List["GeneFunctionAnnotations.GeneFunctionAnnotation"]]
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator["GeneFunctionAnnotations.GeneFunctionAnnotation"]:
         for annotation in self._annotations:
             yield annotation
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._annotations)
 
     def add(self, function: GeneFunction, tool: str, description: str
@@ -366,7 +395,7 @@ class GeneFunctionAnnotations:
         self._annotations.append(new)
         return new
 
-    def add_from_qualifier(self, qualifier: List[str]):
+    def add_from_qualifier(self, qualifier: List[str]) -> None:
         """ Converts a string-based qualifier into one or more GeneFunctions and
             adds them to the current set.
             Expected format will be as per str(GeneFunctionAnnotation).

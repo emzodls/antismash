@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 import antismash.common.path as path
 from antismash.common.subprocessing import run_hmmpress
 
+from antismash.config import ConfigType
 from antismash.config.args import ModuleArgs
 from antismash.common.hmm_rule_parser import rule_parser
 from antismash.common.hmm_rule_parser.cluster_prediction import detect_borders_and_signatures, RuleDetectionResults
@@ -34,19 +35,19 @@ class HMMDetectionResults(DetectionResults):
         self.enabled_types = enabled_types
 
     def to_json(self) -> Dict[str, Any]:
-        logging.critical("hmm_detection not storing borders or secmet annotation info in results JSON")
         return {"record_id": self.record_id,
                 "schema_version": self.schema_version,
-                "enabled_types": self.enabled_types}
+                "enabled_types": self.enabled_types,
+                "rule_results": self.rule_results.to_json()}
 
     @staticmethod
     def from_json(json: Dict[str, Any], record: Record) -> "HMMDetectionResults":
         if json["schema_version"] != HMMDetectionResults.schema_version:
             raise ValueError("Detection results have changed. No results can be reused.")
+        assert json["record_id"] == record.id
 
-        class Dummy:
-            borders = []
-        return HMMDetectionResults(record.id, Dummy(), json["enabled_types"])
+        return HMMDetectionResults(json["record_id"], RuleDetectionResults.from_json(json["rule_results"], record),
+                                   json["enabled_types"])
 
     def get_predictions(self) -> List[ClusterBorder]:
         return self.rule_results.borders
@@ -68,44 +69,45 @@ def get_arguments() -> ModuleArgs:
     return ModuleArgs('Advanced options', 'hmmdetection')
 
 
-def check_options(_options) -> List[str]:
+def check_options(_options: ConfigType) -> List[str]:
     """ Checks the options to see if there are any issues before
         running any analyses
     """
     return []
 
 
-def is_enabled(_options) -> bool:
+def is_enabled(_options: ConfigType) -> bool:
     """  Uses the supplied options to determine if the module should be run
     """
     # in this case, yes, always
     return True
 
 
-def regenerate_previous_results(results: Dict[str, Any], record: Record, options) -> Optional[HMMDetectionResults]:
+def regenerate_previous_results(results: Dict[str, Any], record: Record,
+                                _options: ConfigType) -> Optional[HMMDetectionResults]:
     """ Regenerate previous results. """
-    # always rerun hmmdetection  # TODO: should clusters be kept?
     if not results:
         return None
     regenerated = HMMDetectionResults.from_json(results, record)
     if set(regenerated.enabled_types) != set(get_supported_cluster_types()):
         raise RuntimeError("Cluster types supported by HMM detection have changed, all results invalid")
+    regenerated.rule_results.annotate_cds_features()
     return regenerated
 
 
-def run_on_record(record: Record, previous_results: Optional[HMMDetectionResults], options) -> HMMDetectionResults:
+def run_on_record(record: Record, previous_results: Optional[HMMDetectionResults],
+                  _options: ConfigType) -> HMMDetectionResults:
     """ Runs hmm_detection on the provided record.
     """
     if previous_results:
-        # TODO: return the results after they're properly stored
-        pass
+        return previous_results
 
     signatures = path.get_full_path(__file__, "data", "hmmdetails.txt")
     seeds = path.get_full_path(__file__, "data", "bgc_seeds.hmm")
     rules = path.get_full_path(__file__, "cluster_rules.txt")
     equivalences = path.get_full_path(__file__, "filterhmmdetails.txt")
     results = detect_borders_and_signatures(record, signatures, seeds, rules, equivalences,
-                                            "rule-based-clusters", options)
+                                            "rule-based-clusters")
     results.annotate_cds_features()
     return HMMDetectionResults(record.id, results, get_supported_cluster_types())
 

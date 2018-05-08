@@ -12,7 +12,7 @@ import sys
 import os
 from subprocess import PIPE, Popen, TimeoutExpired
 from tempfile import NamedTemporaryFile
-from typing import Any, Callable, Dict, IO, List, Optional, Union
+from typing import Any, Callable, Dict, IO, Iterable, List, Optional, Union
 import warnings
 
 from helperlibs.wrappers.io import TemporaryDirectory
@@ -96,7 +96,7 @@ def execute(commands: List[str], stdin: Optional[str] = None, stdout: Union[int,
                      stderr == PIPE)
 
 
-def parallel_function(function: Callable, args: List[List[Any]],
+def parallel_function(function: Callable, args: Iterable[List[Any]],
                       cpus: Optional[int] = None, timeout: int = None) -> list:
     """ Runs the given function in parallel on `cpus` cores at a time.
         Uses separate processes so all args are effectively immutable.
@@ -191,7 +191,8 @@ def parallel_execute(commands: List[List[str]], cpus: Optional[int] = None,
     return errors
 
 
-def run_hmmsearch(query_hmmfile: str, target_sequence: str, use_tempfile: bool = False):
+def run_hmmsearch(query_hmmfile: str, target_sequence: str, use_tempfile: bool = False
+                  ) -> List[SearchIO._model.query.QueryResult]:  # pylint: disable=protected-access
     """ Run hmmsearch on a HMM file and a fasta input
 
         Arguments:
@@ -242,7 +243,8 @@ def run_hmmpress(hmmfile: str) -> RunResult:
     return run_result
 
 
-def run_hmmpfam2(query_hmmfile: str, target_sequence: str, extra_args: List[str] = None) -> List:
+def run_hmmpfam2(query_hmmfile: str, target_sequence: str, extra_args: List[str] = None
+                 ) -> List[SearchIO._model.query.QueryResult]:  # pylint: disable=protected-access
     """ Run hmmpfam2 over the provided HMM file and fasta input
 
         Arguments:
@@ -291,7 +293,8 @@ def run_fimo_simple(query_motif_file: str, target_sequence: str) -> str:
     return result.stdout
 
 
-def run_hmmscan(target_hmmfile: str, query_sequence: str, opts=None, results_file=None) -> List:
+def run_hmmscan(target_hmmfile: str, query_sequence: str, opts: List[str] = None,
+                results_file: str = None) -> List[SearchIO._model.query.QueryResult]:  # pylint: disable=protected-access
     """ Runs hmmscan on the inputs and return a list of QueryResults
 
         Arguments:

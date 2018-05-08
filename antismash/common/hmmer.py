@@ -5,7 +5,7 @@
 
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 from antismash.common import fasta, module_results, pfamdb, serialiser, subprocessing
 from antismash.common.secmet import Record, CDSFeature
@@ -33,7 +33,7 @@ class HmmerResults(module_results.ModuleResults):
         return json
 
     @staticmethod
-    def from_json(json: Dict[str, Any], record: Record, max_evalue: float,
+    def from_json(json: Dict[str, Any], record: Record, max_evalue: float,  # type: ignore  # pylint: disable=arguments-differ
                   min_score: float) -> Optional["HmmerResults"]:
         """ Regenerate the results from JSON.
             If max_evalue or min_score aren't equal or narrower than those the
@@ -127,7 +127,7 @@ def build_hits(record: Record, hmmscan_results: List, min_score: float,
     return hits
 
 
-def run_hmmer(record: Record, features: List[CDSFeature], max_evalue: float,
+def run_hmmer(record: Record, features: Iterable[CDSFeature], max_evalue: float,
               min_score: float, database: str, tool: str) -> HmmerResults:
     """ Build hmmer results for the given features
 
