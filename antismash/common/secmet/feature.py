@@ -15,7 +15,7 @@ from Bio.Seq import Seq
 from Bio.SeqFeature import SeqFeature, FeatureLocation, CompoundLocation
 from Bio.SeqRecord import SeqRecord
 
-from .qualifiers import NRPSPKSQualifier, SecMetQualifier, GeneFunction, GeneFunctionAnnotations, ActiveSiteFinderQualifier
+from .qualifiers import NRPSPKSQualifier, SecMetQualifier, GeneFunction, GeneFunctionAnnotations, ActiveSiteFinderQualifier, GOQualifier
 
 
 def _convert_protein_position_to_dna(start: int, end: int, location: FeatureLocation) -> Tuple[int, int]:
@@ -588,7 +588,8 @@ class CDSMotif(Domain):
 class PFAMDomain(Domain):
     """ A feature representing a PFAM domain within a CDS.
     """
-    __slots__ = ["description", "db_xref", "probability", "protein_start", "protein_end"]
+    __slots__ = ["description", "db_xref", "probability", "protein_start", "protein_end",
+                 "gene_ontologies"]
 
     def __init__(self, location: FeatureLocation, description: str, protein_start: int,
                  protein_end: int, domain: Optional[str] = None) -> None:
@@ -611,6 +612,7 @@ class PFAMDomain(Domain):
         self.protein_end = int(protein_end)
         if self.protein_start >= self.protein_end:
             raise ValueError("A PFAMDomain protein location cannot end before it starts")
+        self.gene_ontologies = None  # type: Optional[GOQualifier]
 
     def to_biopython(self, qualifiers=None):
         mine = OrderedDict()
@@ -621,6 +623,9 @@ class PFAMDomain(Domain):
             mine["probability"] = [self.probability]
         if self.db_xref:
             mine["db_xref"] = self.db_xref
+        if self.gene_ontologies:  # should only be the case if db_xrefs present, since those are needed for mapping
+            mine["gene_ontologies"] = self.gene_ontologies.to_biopython()
+            mine["db_xref"].extend(sorted(self.gene_ontologies.ids))
         if qualifiers:
             mine.update(qualifiers)
         return super().to_biopython(mine)
@@ -637,6 +642,7 @@ class PFAMDomain(Domain):
 
         # grab optional qualifiers
         feature.db_xref = leftovers.pop("db_xref", [])
+        feature.gene_ontologies = GOQualifier.from_biopython(leftovers.pop("gene_ontologies", []))
 
         # grab parent optional qualifiers
         return super(PFAMDomain, feature).from_biopython(bio_feature, feature=feature, leftovers=leftovers)

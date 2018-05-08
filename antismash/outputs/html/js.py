@@ -135,6 +135,22 @@ def convert_tta_codons(tta_codons):
     return js_codons
 
 
+def generate_pfam2go_tooltip(record, feature):
+    """Create tooltip text for Pfam to Gene Ontologies results."""
+    go_notes = []
+    unique_pfams_with_gos = {}
+    go_url = 'http://amigo.geneontology.org/amigo/term/'
+    go_info_line = "{pf_id}: <a href='{url}{go_id}' target='_blank'> {go_id}:</a> {go_desc}"
+    for pfam in record.get_pfam_domains_in_cds(feature):
+        if pfam.gene_ontologies:
+            pfam_ids = ", ".join([xref for xref in pfam.db_xref if xref.startswith('PF')])
+            unique_pfams_with_gos[pfam_ids] = pfam.gene_ontologies
+    for unique_id, go_qualifier in sorted(unique_pfams_with_gos.items()):
+        for go_id, go_description in sorted(go_qualifier.go_entries.items()):
+            go_notes.append(go_info_line.format(pf_id=unique_id, url=go_url, go_id=go_id, go_desc=go_description))
+    return go_notes
+
+
 def get_description(record, feature, type_, options, mibig_result):
     "Get the description text of a CDS feature"
 
@@ -200,6 +216,10 @@ def get_description(record, feature, type_, options, mibig_result):
             asf_notes.append("%s (%d..%d): %s" % (pfam.domain, pfam.protein_start, pfam.protein_end, hit))
     if asf_notes:
         template += '<span class="bold">Active Site Finder results:</span><br>\n%s<br><br>\n' % "<br>".join(asf_notes)
+    go_notes = generate_pfam2go_tooltip(record, feature)
+    if go_notes:
+        template += '<br><span class="bold">Gene Ontology terms for PFAM domains:</span><br>\n' \
+                    '%s<br><br>\n' % "<br>".join(go_notes)
 
     clipboard_fragment = """<a href="javascript:copyToClipboard('%s')">Copy to clipboard</a>"""
     template += "AA sequence: %s<br>\n" % (clipboard_fragment % feature.translation)
