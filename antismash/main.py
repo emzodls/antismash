@@ -7,7 +7,6 @@
     The intended entry point of antismash is run_antismash() in this file.
 """
 
-import argparse
 from collections import defaultdict
 import cProfile
 from datetime import datetime
@@ -18,47 +17,41 @@ import pstats
 import shutil
 import time
 import tempfile
-from types import ModuleType
-from typing import Any, Dict, List, Optional, Union
+from typing import cast, Any, Dict, List, Optional, Union
 
 from Bio import SeqIO
 
 from antismash.config import update_config, ConfigType
 from antismash.common import serialiser, record_processing
-from antismash.common.module_results import ModuleResults
+from antismash.common.module_results import ModuleResults, DetectionResults
 from antismash.common.secmet import Record
-<<<<<<< HEAD
-from antismash.detection import genefinding, hmm_detection, nrps_pks_domains, full_hmmer, \
-                                cassis, clusterfinder, cluster_hmmer
-from antismash.modules import tta, clusterblast, lanthipeptides, smcogs, dummy, \
-                              nrps_pks, thiopeptides, sactipeptides, lassopeptides, active_site_finder
-=======
-from antismash.detection import (full_hmmer,
+from antismash.detection import (cassis,
+                                 cluster_hmmer,
+                                 clusterfinder,
+                                 full_hmmer,
+                                 genefinding,
                                  hmm_detection,
                                  nrps_pks_domains,
-                                 genefinding,
-                                 cassis,
-                                 clusterfinder,
-                                 cluster_hmmer,
-                                )
+                                 )
 from antismash.modules import (active_site_finder,
                                clusterblast,
                                dummy,
                                lanthipeptides,
                                lassopeptides,
                                nrps_pks,
+                               pfam2go,
                                sactipeptides,
                                smcogs,
                                thiopeptides,
                                tta,
-                              )
->>>>>>> f96bd089cb98efbddeb34adcbfc35641b2a307fd
+                               )
 from antismash.outputs import html, svg
+from antismash.typing import AntismashModule
 
 __version__ = "5.0.0alpha"
 
 
-def get_all_modules() -> List[ModuleType]:
+def get_all_modules() -> List[AntismashModule]:
     """ Return a list of default modules
 
         Arguments:
@@ -70,7 +63,7 @@ def get_all_modules() -> List[ModuleType]:
     return get_detection_modules() + get_analysis_modules() + get_output_modules()
 
 
-def get_detection_modules() -> List[ModuleType]:
+def get_detection_modules() -> List[AntismashModule]:
     """ Return a list of default detection modules
 
         Arguments:
@@ -79,11 +72,11 @@ def get_detection_modules() -> List[ModuleType]:
         Returns:
             a list of modules
     """
-    return [genefinding, hmm_detection, nrps_pks_domains, full_hmmer, cassis, clusterfinder,
-            cluster_hmmer]
+    return [genefinding, hmm_detection, nrps_pks_domains, full_hmmer, cassis,  # type: ignore
+            clusterfinder, cluster_hmmer]
 
 
-def get_analysis_modules() -> List[ModuleType]:
+def get_analysis_modules() -> List[AntismashModule]:
     """ Return a list of default analysis modules
 
         Arguments:
@@ -92,11 +85,11 @@ def get_analysis_modules() -> List[ModuleType]:
         Returns:
             a list of modules
     """
-    return [smcogs, tta, lanthipeptides, thiopeptides, nrps_pks, clusterblast,
-            sactipeptides, lassopeptides, active_site_finder, dummy]
+    return [smcogs, tta, lanthipeptides, thiopeptides, nrps_pks, clusterblast,  # type: ignore
+            sactipeptides, lassopeptides, active_site_finder, pfam2go, dummy]
 
 
-def get_output_modules() -> List[ModuleType]:
+def get_output_modules() -> List[AntismashModule]:
     """ Return a list of default output modules
 
         Arguments:
@@ -105,7 +98,7 @@ def get_output_modules() -> List[ModuleType]:
         Returns:
             a list of modules
     """
-    return [html]
+    return [html]  # type: ignore  # a lot of casting avoided
 
 
 def setup_logging(logfile: str = None, verbose: bool = False, debug: bool = False) -> None:
@@ -120,7 +113,7 @@ def setup_logging(logfile: str = None, verbose: bool = False, debug: bool = Fals
             None
     """
 
-    def new_critical(*args):  # TODO: temporary to make alpha issues more obvious
+    def new_critical(*args: Any) -> None:  # TODO: temporary to make alpha issues more obvious
         """ make critical messages yellow and without the normal timestamp """
         msg = "\033[1;33m{}\033[0m".format(args[0])
         print(msg % args[1:])
@@ -148,7 +141,7 @@ def setup_logging(logfile: str = None, verbose: bool = False, debug: bool = Fals
     logging.getLogger('').addHandler(handler)
 
 
-def verify_options(options: ConfigType, modules: List[ModuleType]) -> bool:
+def verify_options(options: ConfigType, modules: List[AntismashModule]) -> bool:
     """ Find and display any incompatibilities in provided options
 
         Arguments:
@@ -174,16 +167,16 @@ def verify_options(options: ConfigType, modules: List[ModuleType]) -> bool:
     return False
 
 
-def run_detection(record: Record, options: ConfigType, previous_result: Dict[str, Union[Dict, ModuleResults]]) -> Dict[str, float]:
+def run_detection(record: Record, options: ConfigType,
+                  module_results: Dict[str, Union[ModuleResults, Dict[str, Any]]]) -> Dict[str, float]:
     """ Detect different secondary metabolite clusters, PFAMs, and domains.
 
         Arguments:
             record: the Record to run detection over
             options: antiSMASH config
-            previous_result: a dictionary mapping a module's name to results from
-                             a previous run on this module, either as a
-                             ModuleResults subclass or a JSON-like dictionary if
-                             the module created it is no longer present
+            module_results: a dictionary mapping a module's name to results from
+                            a previous run on this module, as a ModuleResults subclass
+                            or in JSON form
 
         Returns:
             the time taken by each detection module as a dictionary
@@ -193,14 +186,12 @@ def run_detection(record: Record, options: ConfigType, previous_result: Dict[str
 
     timings = {}  # type: Dict[str, float]
 
-    module_results = regenerate_results_for_record(record, options, get_detection_modules(),
-                                                   previous_result)
-
     # run full genome detections
     for module in [full_hmmer]:
-        run_module(record, module, options, module_results, timings)
+        run_module(record, cast(AntismashModule, module), options, module_results, timings)
         results = module_results.get(module.__name__)
         if results:
+            assert isinstance(results, ModuleResults)
             logging.debug("Adding detection results from %s to record", module.__name__)
             results.add_to_record(record)
 
@@ -208,9 +199,10 @@ def run_detection(record: Record, options: ConfigType, previous_result: Dict[str
     logging.info("Detecting secondary metabolite clusters")
     predictions = []
     for module in [hmm_detection, cassis, clusterfinder]:
-        run_module(record, module, options, module_results, timings)
+        run_module(record, cast(AntismashModule, module), options, module_results, timings)
         results = module_results.get(module.__name__)
         if results:
+            assert isinstance(results, DetectionResults)
             predictions.extend(results.get_predictions())
 
     # create merged clusters
@@ -227,76 +219,47 @@ def run_detection(record: Record, options: ConfigType, previous_result: Dict[str
 
     # finally, run any detection limited to genes in clusters
     for module in [nrps_pks_domains, cluster_hmmer]:
-        run_module(record, module, options, module_results, timings)
+        run_module(record, cast(AntismashModule, module), options, module_results, timings)
         results = module_results.get(module.__name__)
         if results:
+            assert isinstance(results, ModuleResults)
             logging.debug("Adding detection results from %s to record", module.__name__)
             results.add_to_record(record)
 
     return timings
 
 
-def regenerate_results_for_record(record: Record, options: ConfigType, modules: List[ModuleType],
-                                  previous_result: Dict[str, Dict]
-                                  ) -> Dict[str, Optional[ModuleResults]]:
-    """ Converts a record's JSON results to ModuleResults per module
-
-        Arguments:
-            record: the record to regenerate results for
-            options: antismash Config
-            modules: the modules to regenerate results of
-            previous_result: a dict of the json results to convert, in the form:
-                    {modulename : {module details}}
-
-        Returns:
-            the previous_result dict, with the values of all modules provided
-            as an instance of ModuleResults or None if results don't apply or
-            could not be regenerated
-    """
-    # skip if nothing to work with
-    if not previous_result:
-        return previous_result
-
-    logging.debug("Regenerating results for record %s", record.id)
-    for module in modules:
-        section = previous_result.pop(module.__name__, None)
-        results = None
-        if section:
-            logging.debug("Regenerating results for module %s", module.__name__)
-            results = module.regenerate_previous_results(section, record, options)
-            if not results:
-                logging.debug("Results could not be generated for %s", module.__name__)
-            else:
-                assert isinstance(results, ModuleResults)
-                previous_result[module.__name__] = results
-    return previous_result
-
-
-def run_module(record: Record, module: ModuleType, options: ConfigType,
-               module_results: Dict[str, Optional[ModuleResults]], timings: Dict[str, float]) -> None:
-    """ Run analysis modules on a record
+def run_module(record: Record, module: AntismashModule, options: ConfigType,
+               module_results: Dict[str, Union[ModuleResults, Dict[str, Any]]],
+               timings: Dict[str, float]) -> None:
+    """ Run a module on a record
 
         Arguments:
             record: the record to run the analysis on
+            module: the module to run, only run if enabled and not reusing results
             options: antismash Config
-            modules: the modules to analyse with
-                        each module will run only if enabled and not reusing all
-                        results
-            module_results: a dictionary of module name to json results,
-                                json results will be replaced by ModuleResults
-                                instances
+            module_results: a dictionary of module name to ModuleResults
+                            instances or their JSON representations,
+                            updated if the module runs
             timings: a dictionary mapping module name to time taken for that
                      module, will be updated with the module timing
 
         Returns:
             None
-        """
+    """
+    previous_results = module_results.pop(module.__name__, None)
+    results = None
+    if previous_results is not None:
+        assert isinstance(previous_results, dict)
+        logging.debug("Regenerating results for %s", module.__name__)
+        results = module.regenerate_previous_results(previous_results, record, options)
+        module_results[module.__name__] = results
+    assert results is None or isinstance(results, ModuleResults)
 
     logging.debug("Checking if %s should be run", module.__name__)
     if not module.is_enabled(options):
         return
 
-    results = module_results.get(module.__name__)
     logging.info("Running %s", module.__name__)
 
     start = time.time()
@@ -308,8 +271,8 @@ def run_module(record: Record, module: ModuleType, options: ConfigType,
     timings[module.__name__] = duration
 
 
-def analyse_record(record: Record, options: ConfigType, modules: List[ModuleType],
-                   previous_result: Dict[str, Dict[str, Any]]) -> Dict[str, float]:
+def analyse_record(record: Record, options: ConfigType, modules: List[AntismashModule],
+                   previous_result: Dict[str, Union[ModuleResults, Dict[str, Any]]]) -> Dict[str, float]:
     """ Run analysis modules on a record
 
         Arguments:
@@ -325,12 +288,11 @@ def analyse_record(record: Record, options: ConfigType, modules: List[ModuleType
         Returns:
             a dictionary mapping module name to time taken
     """
-    module_results = regenerate_results_for_record(record, options, modules, previous_result)
     timings = {}  # type: Dict[str, float]
     # try to run the given modules over the record
     logging.info("Analysing record: %s", record.id)
     for module in modules:
-        run_module(record, module, options, module_results, timings)
+        run_module(record, module, options, previous_result, timings)
     return timings
 
 
@@ -402,11 +364,20 @@ def write_outputs(results: serialiser.AntismashResults, options: ConfigType) -> 
         Returns:
             None
     """
+    # don't use results for which the module no longer exists to regenerate/calculate
+    module_results_per_record = []
+    for record_results in results.results:
+        record_result = {}
+        for module_name, result in record_results.items():
+            if isinstance(result, ModuleResults):
+                record_result[module_name] = result
+        module_results_per_record.append(record_result)
+
     logging.debug("Creating results page")
-    html.write(results.records, results.results, options)
+    html.write(results.records, module_results_per_record, options)
 
     logging.debug("Creating results SVGs")
-    svg.write(options, results.results)
+    svg.write(options, module_results_per_record)
 
     # convert records to biopython
     bio_records = [record.to_biopython() for record in results.records]
@@ -460,7 +431,7 @@ def annotate_records(results: serialiser.AntismashResults) -> None:
             result.add_to_record(record)
 
 
-def read_data(sequence_file, options) -> serialiser.AntismashResults:
+def read_data(sequence_file: Optional[str], options: ConfigType) -> serialiser.AntismashResults:
     """ Reads in the data to be used in the analysis run. Can be provided as
         as a sequence file (fasta/genbank) or as file of prior results
 
@@ -479,8 +450,8 @@ def read_data(sequence_file, options) -> serialiser.AntismashResults:
         records = record_processing.parse_input_sequence(sequence_file, options.taxon,
                                 options.minlength, options.start, options.end)
         results = serialiser.AntismashResults(sequence_file.rsplit(os.sep, 1)[-1],
-                                           records, [{} for i in range(len(records))],
-                                           __version__)
+                                              records, [{} for i in records],
+                                              __version__)
         update_config({"input_file": os.path.splitext(results.input_file)[1]})
     else:
         logging.debug("Attempting to reuse previous results in: %s", options.reuse_results)
@@ -494,7 +465,7 @@ def read_data(sequence_file, options) -> serialiser.AntismashResults:
     return results
 
 
-def check_prerequisites(modules: List[ModuleType]) -> None:
+def check_prerequisites(modules: List[AntismashModule]) -> None:
     """ Checks that each module's prerequisites are satisfied. If not satisfied,
         a RuntimeError is raised.
 
@@ -519,7 +490,7 @@ def check_prerequisites(modules: List[ModuleType]) -> None:
         raise RuntimeError("Modules failing prerequisites")
 
 
-def list_plugins(modules: List[ModuleType]) -> None:
+def list_plugins(modules: List[AntismashModule]) -> None:
     """ Prints the name and short description of the given modules
 
         Arguments:
@@ -558,7 +529,7 @@ def log_module_runtimes(timings: Dict[str, Dict[str, float]]) -> None:
         logging.debug("  %s: %.1fs", module, runtime)
 
 
-def run_antismash(sequence_file: Optional[str], cmdline_options: argparse.Namespace) -> int:
+def run_antismash(sequence_file: Optional[str], options: ConfigType) -> int:
     """ The complete antismash pipeline. Reads in data, runs detection and
         analysis modules over any records found, then outputs the results to
         file.
@@ -566,7 +537,7 @@ def run_antismash(sequence_file: Optional[str], cmdline_options: argparse.Namesp
         Arguments:
             sequence_file: the sequence file to read in records from, can be
                             None if reusing results
-            cmdline_options: command line options as an argparse.Namespace
+            options: command line options
             detection_modules: None or a list of modules to use for detection,
                                 if None defaults will be used
             analysis_modules: None or a list of modules to use for analysis,
@@ -576,21 +547,18 @@ def run_antismash(sequence_file: Optional[str], cmdline_options: argparse.Namesp
             0 if requested operations completed succesfully, otherwise 1
             Exceptions may also be raised
     """
-    setup_logging(logfile=cmdline_options.logfile, verbose=cmdline_options.verbose,
-                  debug=cmdline_options.debug)
+    setup_logging(logfile=options.logfile, verbose=options.verbose,
+                  debug=options.debug)
 
     detection_modules = get_detection_modules()
     analysis_modules = get_analysis_modules()
     modules = detection_modules + analysis_modules
 
-    if cmdline_options.list_plugins:
+    if options.list_plugins:
         list_plugins(modules)
         return 0
 
-    cmdline_options.all_enabled_modules = [module for module in modules if module.is_enabled(cmdline_options)]
-    # converts from a namespace to an antismash.config.Config instance so
-    # modules can't fiddle with it
-    options = update_config(cmdline_options)
+    options.all_enabled_modules = list(filter(lambda x: x.is_enabled(options), modules))
 
     if options.check_prereqs_only:
         try:
@@ -621,23 +589,23 @@ def run_antismash(sequence_file: Optional[str], cmdline_options: argparse.Namesp
     results = read_data(sequence_file, options)
 
     # reset module timings
-    results.timings_by_record = {}
+    results.timings_by_record.clear()
 
     prepare_output_directory(options.output_dir, sequence_file or options.reuse_results)
 
-    results.records = record_processing.pre_process_sequences(results.records,
-                                                              options, genefinding)
-    for seq_record, previous_result in zip(results.records, results.results):
+    results.records = record_processing.pre_process_sequences(results.records, options,
+                                                              cast(AntismashModule, genefinding))
+    for record, module_results in zip(results.records, results.results):
         # skip if we're not interested in it
-        if seq_record.skip:
+        if record.skip:
             continue
-        timings = run_detection(seq_record, options, previous_result)
+        timings = run_detection(record, options, module_results)
         # and skip analysis if detection didn't find anything
-        if not seq_record.get_clusters():
+        if not record.get_clusters():
             continue
-        analysis_timings = analyse_record(seq_record, options, analysis_modules, previous_result)
+        analysis_timings = analyse_record(record, options, analysis_modules, module_results)
         timings.update(analysis_timings)
-        results.timings_by_record[seq_record.id] = timings
+        results.timings_by_record[record.id] = timings
 
     # Write results
     json_filename = os.path.join(options.output_dir, results.input_file)

@@ -10,6 +10,7 @@ from typing import List
 
 import antismash
 from antismash.common.subprocessing import execute
+from antismash.config import ConfigType
 
 
 def get_git_version() -> str:

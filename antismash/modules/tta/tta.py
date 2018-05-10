@@ -13,12 +13,13 @@ from typing import Any, Dict, List, Tuple  # used in comment type hints #pylint:
 
 from antismash.common.secmet import Record
 from antismash.common.secmet.feature import Feature, FeatureLocation
-import antismash.common.module_results
+from antismash.common.module_results import ModuleResults
+from antismash.config import ConfigType
 
 Codon = Tuple[int, int]  # keeping as a type style, so # pylint: disable=invalid-name
 
 
-class TTAResults(antismash.common.module_results.ModuleResults):
+class TTAResults(ModuleResults):
     """ Holds results for the TTA module by tracking locations of TTA codons."""
     schema_version = 1
 
@@ -63,7 +64,7 @@ class TTAResults(antismash.common.module_results.ModuleResults):
         for feature in self.features:
             record.add_feature(feature)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.features)
 
     @staticmethod
@@ -81,7 +82,7 @@ class TTAResults(antismash.common.module_results.ModuleResults):
         return results
 
 
-def detect(record: Record, options) -> TTAResults:
+def detect(record: Record, options: ConfigType) -> TTAResults:
     """ Find TTA codons in a record
 
         Arguments:

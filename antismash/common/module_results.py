@@ -5,7 +5,7 @@
     antismash run results.
 """
 
-from typing import Dict, List
+from typing import Any, Dict, List
 
 from .secmet import Record
 from .secmet.feature import ClusterBorder
@@ -21,7 +21,7 @@ class ModuleResults:
     def __init__(self, record_id: str) -> None:
         self.record_id = record_id
 
-    def to_json(self) -> Dict:
+    def to_json(self) -> Dict[str, Any]:
         """
             Converts the contained results into a json structure of simple types
 
@@ -31,7 +31,7 @@ class ModuleResults:
         raise NotImplementedError()
 
     @staticmethod
-    def from_json(json: Dict, record: Record) -> "ModuleResults":
+    def from_json(json: Dict[str, Any], record: Record) -> "ModuleResults":
         """
             Converts a json structure back to a ModuleResults instance
 

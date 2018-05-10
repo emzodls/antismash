@@ -105,8 +105,7 @@ def create_feature_from_location(record: Record, location: FeatureLocation,
     """
     if label is None:
         label = 'allorf%03d' % counter
-    dummy = Feature(location, feature_type="temp")
-    feature = CDSFeature(location, str(record.get_aa_translation_of_feature(dummy)),
+    feature = CDSFeature(location, str(record.get_aa_translation_from_location(location)),
                          locus_tag=label, protein_id=label, gene=label)
     feature.created_by_antismash = True
     return feature
@@ -132,7 +131,7 @@ def find_all_orfs(record: Record, cluster: Optional[Cluster] = None) -> List[CDS
     if cluster:
         seq = record.seq[cluster.location.start:cluster.location.end]
         offset = cluster.location.start
-        existing = cluster.cds_children
+        existing = tuple(cluster.cds_children)
 
     # Find orfs throughout the range
     forward_matches = scan_orfs(seq, 1, offset)
