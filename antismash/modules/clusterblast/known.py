@@ -74,6 +74,15 @@ def run_knownclusterblast_on_record(record: Record, options: ConfigType) -> Gene
     clusters, proteins = load_clusterblast_database(record, searchtype="knownclusterblast")
     return perform_knownclusterblast(options, record, clusters, proteins)
 
+def perform_knownclusterbigscape(options: ConfigType, record: Record,
+                                 reference_clusters: Dict[str,ReferenceCluster],
+                                 proteins: Dict[str, Protein]) -> GeneralResults:
+
+    logging.debug("Running BiG-SCAPE Distance Calculations")
+    results = GeneralResults(record.id, search_type="knownclusterblast")
+
+    with TemporaryDirectory(change=True) as tempdir:
+        write_fastas_with_all_genes(record.get_clusters(), "input.fasta")
 
 def perform_knownclusterblast(options: ConfigType, record: Record,
                               reference_clusters: Dict[str, ReferenceCluster],

@@ -86,6 +86,14 @@ def run_diamond(query: str, database: str, tempdir: str, options: ConfigType) ->
         raise RuntimeError("diamond failed to run: %s -> %s" % (command, result.stderr[-100:]))
     return "input.out"
 
+def run_hmmsearch(query: str, database: str, tempdir: str, options: ConfigType):
+
+    logging.debug("Running external command: hmmsearch")
+    command = ['hmmscan','--cpu','0','--domtblout','input.domtbl','--noali','--cut_tc',database,query]
+    result = subprocessing.execute(command)
+    if not result.successful():
+        raise RuntimeError("diamond failed to run: %s -> %s" % (command, result.stderr[-100:]))
+    return "input.domtbl"
 
 def make_blastdb(inputfile: str, db_prefix: str) -> subprocessing.RunResult:
     """ Runs makeblastdb on the inputs to create a blast protein database
