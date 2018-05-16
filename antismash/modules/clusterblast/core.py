@@ -8,6 +8,8 @@ import logging
 import os
 from typing import Dict, Iterable, List, Set, Tuple  # pylint: disable=unused-import
 
+
+
 from helperlibs.wrappers.io import TemporaryDirectory
 
 from antismash.common import path, subprocessing, fasta, secmet
@@ -32,6 +34,85 @@ def get_core_gene_ids(record: secmet.Record) -> Set[str]:  # TODO: consider movi
             cores.add(gene.get_accession())
     return cores
 
+def run_hmmalign(query: str,domain: str, pfam_db_path: str, pfam_dict: Dict[str,Dict]) -> Dict:
+
+    hmm_fetch_command = ['hmmfetch', pfam_db_path , domain]
+    hmm_align_command = ['hmmalign', '-', query]
+    hmm_fetch_proc = subprocessing.execute(hmm_fetch_command)
+    if hmm_fetch_proc.successful():
+        hmm_align_proc = subprocessing.execute(hmm_align_command,stdin=hmm_fetch_proc.stdout)
+
+        if hmm_align_proc.successful():
+            logging.debug('Aligned {}. Parsing Output'.format(domain))
+            reference = ""
+            algnDict = defaultdict(str)
+            output = hmm_align_proc.stdout.split('\n')
+            for line in output:
+                line = line.strip()
+                if line.startswith("#=GC RF"):
+                    reference += line[7:].strip()
+                elif line == "":
+                    continue
+                elif line[0] == "/" or line[0] == "#":
+                    continue
+                else:
+                    a = line.split(" ")
+                    header = a[0]
+                    algn = a[-1]
+                    algnDict[header] += algn
+                # get start-end coordinates of every "x" island (original consensus)
+                # in the reference
+                state_reference = False
+                slicing_tuples = []
+
+            for pos in range(len(reference)):
+                if reference[pos] == "x" and not state_reference:
+                    state_reference = True
+                    start = pos
+                if reference[pos] == "." and state_reference:
+                    state_reference = False
+                    slicing_tuples.append((start, pos))
+            if state_reference:
+                slicing_tuples.append((start, len(reference)))
+            if len(algnDict) > 0:
+                for header in algnDict:
+                    sequence = ""
+                    for a, b in slicing_tuples:
+                        sequence += algnDict[header][a:b]
+                    bgc, geneIdx, location = header.split('%')
+                    geneIdx = int(geneIdx)
+                    start, stop = [int(x) for x in location.split('-')]
+                    logging.debug('BGC: {}, CDS{}:{}-{}, Seq: {}'.format(bgc,geneIdx,start,stop,sequence))
+                    pfam_dict[bgc][(geneIdx, (start, stop))] = sequence
+            return pfam_dict
+        else:
+            raise RuntimeError("hmmalign run failed: %s..." % hmm_align_proc.stderr[-200:])
+    else:
+        raise RuntimeError("hmmfetch run failed: %s..." % hmm_fetch_proc.stderr[-200:])
+
+
+def write_raw_bigscape_output(output_dir: str, distances: list, prefix: str = "bigscape") -> str:
+    """ Writes blast output to file
+
+        NOTE: the output filename will not change for different records, if
+              multiple records are in an input and the same output directory
+              is used, the file written here will be overwritten
+
+        Arguments:
+            output_dir: the path of the directory to store results
+            blast_output: the output of blast as a single string
+            search_type: the prefix of the filename to create
+
+        Returns:
+            the name of the file written
+    """
+    filename = "%s-output.txt" % prefix
+    distances.sort(key=lambda x:x[1])
+    with open(os.path.join(output_dir, filename), "w") as handle:
+        for mibig_id,distance in distances:
+            distance = list(map(str,distance))
+            handle.write('{},{}\n'.format(mibig_id,','.join(distance)))
+    return filename
 
 def run_blast(query: str, database: str) -> str:
     """ Runs blastp, comparing the given query with the given database

@@ -16,6 +16,7 @@ from .core import load_clusterblast_database, internal_homology_blast
 from .clusterblast import perform_clusterblast
 from .html_output import will_handle, generate_details_div
 from .known import run_knownclusterblast_on_record, check_known_prereqs
+from .known_bs import run_bigscape_on_record
 from .results import ClusterBlastResults, get_result_limit
 from .sub import run_subclusterblast_on_record, check_sub_prereqs
 
@@ -45,6 +46,11 @@ def get_arguments() -> ModuleArgs:
                              default=False,
                              help="Compare identified clusters against known "
                                   "gene clusters from the MIBiG database.")
+    args.add_analysis_toggle('bigscape',
+                             dest='bigscape',
+                             action='store_true',
+                             default=True,
+                             help="Calculate BiG-SCAPE distances of cluster to MiBIG")
     args.add_option('nclusters',
                     dest='nclusters',
                     metavar="count",
@@ -132,4 +138,6 @@ def run_on_record(record: Record, results: Optional[ClusterBlastResults],
         results.subcluster = run_subclusterblast_on_record(record, options)
     if options.cb_knownclusters and not results.knowncluster:
         results.knowncluster = run_knownclusterblast_on_record(record, options)
+    if options.cb_bigscape and not results.bigscape:
+        results.bigscape = run_bigscape_on_record(record,options)
     return results

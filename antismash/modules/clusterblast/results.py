@@ -259,6 +259,7 @@ class ClusterBlastResults(ModuleResults):
         self.general = None  # type: GeneralResults
         self.subcluster = None  # type: GeneralResults
         self.knowncluster = None  # type: GeneralResults
+        self.bigscape = None # type: GeneralResults
         self.internal_homology_groups = {}  # type: Dict[int, List[List[str]]]
 
     def to_json(self) -> Dict[str, Any]:
