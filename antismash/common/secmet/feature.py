@@ -3,7 +3,7 @@
 
 """ A collection of classes for representing a variety of feature types """
 
-from collections import OrderedDict
+from collections import OrderedDict,Counter
 import logging
 import os
 import warnings
@@ -1064,6 +1064,10 @@ class Cluster(Feature):
         self.parent_record = None  # type: Any  # TODO: optional Record, but that's a circular dependency
         self.cds_children = OrderedDict()  # type: Dict[CDSFeature, None]
         self.borders = []  # type: List[ClusterBorder]
+
+        # for bigscape domain calculation
+        self.pfam_domains = set()
+        self.pfam_domain_ctr = Counter()
 
     @property
     def products(self) -> Iterable[str]:

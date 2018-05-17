@@ -104,7 +104,7 @@ def perform_knowncluster_bigscape(options: ConfigType, record: Record) -> Genera
                                                  mibig_dom_cts, mibig_pairs, anchor_domains)
 
         write_raw_bigscape_output(options.output_dir,cluster_mibig_distances,
-                                  prefix='bigscape-cluster-{}'.format(cluster.get_cluster_number()))
+                                  prefix='bigscape-{}-cluster-{}'.format(record.id,cluster.get_cluster_number()))
     return results
 
 
@@ -148,8 +148,8 @@ def compare_cluster_to_mibig(query_cluster: Cluster,record: Record,pfam_db_path:
             if pfamID in mibig_pfam_dict:
                 sequence = pfam_domain._translation
                 dom_dict = cluster_pfam_dict.setdefault(pfamID,{})
-                dom_dict['query'] = dict()
-                dom_dict['query'][idx,(pfam_domain.location.start,pfam_domain.location.end)] = sequence
+                query_entries = dom_dict.setdefault('query',{})
+                query_entries[idx,(pfam_domain.location.start,pfam_domain.location.end)] = sequence
 
 
     ## for the pfam domains seen, extract the corresponding mibig sequences that contain those pfam domains and add
@@ -305,8 +305,11 @@ def calculate_distance(cluster_pfam_dict, query_cluster_dom_cts, query_cluster_d
         if len(query_dom_str) >= 2:
             query_pairs.update(tuple(query_dom_str[i:i+2]) for i in range(len(query_dom_str)) if
                                      len(query_dom_str[i:i+2]) > 1 )
-
-    AI = len(query_pairs & ref_pairs) / len(query_pairs | ref_pairs)
+    ### If there are no intersecting pairs between query and reference AI is 0
+    if len(query_pairs| ref_pairs) == 0:
+        AI = 0
+    else:
+        AI = len(query_pairs & ref_pairs) / len(query_pairs | ref_pairs)
 
     distance = 1 - (jacc_w * jacc_score) - (dss_w * DSS) - (ai_w * AI)
 

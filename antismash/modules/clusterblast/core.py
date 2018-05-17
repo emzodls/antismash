@@ -82,7 +82,6 @@ def run_hmmalign(query: str,domain: str, pfam_db_path: str, pfam_dict: Dict[str,
                     bgc, geneIdx, location = header.split('%')
                     geneIdx = int(geneIdx)
                     start, stop = [int(x) for x in location.split('-')]
-                    logging.debug('BGC: {}, CDS{}:{}-{}, Seq: {}'.format(bgc,geneIdx,start,stop,sequence))
                     pfam_dict[bgc][(geneIdx, (start, stop))] = sequence
             return pfam_dict
         else:
@@ -106,9 +105,11 @@ def write_raw_bigscape_output(output_dir: str, distances: list, prefix: str = "b
         Returns:
             the name of the file written
     """
-    filename = "%s-output.txt" % prefix
+    filename = "%s-output.csv" % prefix
     distances.sort(key=lambda x:x[1])
     with open(os.path.join(output_dir, filename), "w") as handle:
+        handle.write('##MiBIG ID,Distance,Jaccard Score,Domain Similarity Score (DSS), '
+                     'Adjacency Index, Non-Anchor DSS, Anchor DSS, Non-Anchor Domain Count, Anchor Domain Count\n')
         for mibig_id,distance in distances:
             distance = list(map(str,distance))
             handle.write('{},{}\n'.format(mibig_id,','.join(distance)))
