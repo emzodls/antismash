@@ -7,7 +7,7 @@ from collections import OrderedDict,Counter
 import logging
 import os
 import warnings
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union,Set
 
 from helperlibs.bio import seqio
 
@@ -1039,7 +1039,8 @@ class Cluster(Feature):
     __slots__ = ["_extent", "_cutoff", "_products", "contig_edge",
                  "detection_rules", "smiles_structure",
                  "clusterblast", "knownclusterblast", "subclusterblast",
-                 "parent_record", "cds_children", "borders", "monomers_prediction"]
+                 "parent_record", "cds_children", "borders", "monomers_prediction","pfam_domains",
+                 "pfam_domain_ctr","domain_strs"]
 
     def __init__(self, location: FeatureLocation, cutoff: int, extent: int, products: List[str]) -> None:
         super().__init__(location, feature_type="cluster",
@@ -1068,6 +1069,7 @@ class Cluster(Feature):
         # for bigscape domain calculation
         self.pfam_domains = set()
         self.pfam_domain_ctr = Counter()
+        self.domain_strs = list()
 
     @property
     def products(self) -> Iterable[str]:

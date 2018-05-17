@@ -99,19 +99,101 @@ def perform_knowncluster_bigscape(options: ConfigType, record: Record) -> Genera
 
     logging.debug("Loading MiBIG Database")
     mibig_pfam_dict, mibig_dom_cts, mibig_pairs, anchor_domains = load_mibig_bigscape_files()
-    for cluster in record.get_clusters():
-        cluster_mibig_distances = compare_cluster_to_mibig(cluster,record,pfam_db_path,mibig_pfam_dict,
-                                                 mibig_dom_cts, mibig_pairs, anchor_domains)
+    clusters_pfam_dict = make_pfam_dict_from_record(record)
+    clusters_pfam_dict = add_mibig_entries_to_pfam_dict(clusters_pfam_dict,mibig_pfam_dict)
+    clusters_pfam_dict = align_pfam_domains(clusters_pfam_dict,pfam_db_path)
+    distance_dict = compare_clusters_to_mibig(clusters_pfam_dict, record, mibig_dom_cts, mibig_pairs, anchor_domains)
 
-        write_raw_bigscape_output(options.output_dir,cluster_mibig_distances,
-                                  prefix='bigscape-{}-cluster-{}'.format(record.id,cluster.get_cluster_number()))
+    for cluster in distance_dict:
+        out_prefix = cluster.replace('query''bigscape')
+        write_raw_bigscape_output(options.output_dir,distance_dict[cluster],prefix=out_prefix)
     return results
 
+def make_pfam_dict_from_record(record: Record):
+    clusters_pfam_dict = dict()
+    for cluster in record.get_clusters():
+        current_strand = 0
+        current_dom_str = []
+        for idx,cds in enumerate(cluster.cds_children):
+            for pfam_domain in record.get_pfam_domains_in_cds(cds):
+                pfam_id = pfam_domain.domain
 
+                ## update domain counter for cluster
+                cluster.pfam_domains.add(pfam_id)
+                cluster.pfam_domain_ctr[pfam_id] += 1
 
+                # get domain strings in cluster
+                if current_strand == 0:
+                    current_strand = pfam_domain.location.strand
+                    current_dom_str.append(pfam_id)
+                elif pfam_domain.location.strand == current_strand:
+                    current_dom_str.append(pfam_id)
+                else:
+                    cluster.domain_strs.append(current_dom_str)
+                    current_dom_str = []
+                    current_strand = pfam_domain.location.strand
 
+                # now put the sequence information in the pfam_dict for the cluster
+                sequence = pfam_domain._translation
+                pfam_dom_dict = clusters_pfam_dict.setdefault(pfam_id,{})
+                pfam_entries = pfam_dom_dict.setdefault('query-{}-cluster-{}'.format(
+                    record.id,cluster.get_cluster_number()),{})
+                pfam_entries[idx, (pfam_domain.location.start, pfam_domain.location.end)] = sequence
 
+    return clusters_pfam_dict
 
+def add_mibig_entries_to_pfam_dict(clusters_pfam_dict,mibig_pfam_dict):
+    for pfam_domain in clusters_pfam_dict.keys():
+        if pfam_domain in mibig_pfam_dict:
+            for mibig_bgc in mibig_pfam_dict[pfam_domain]:
+                clusters_pfam_dict[pfam_domain].setdefault(mibig_bgc, {})
+                for (idx, (start, stop)), seq in mibig_pfam_dict[pfam_domain][mibig_bgc]:
+                    clusters_pfam_dict[pfam_domain][mibig_bgc][(idx, (start, stop))] = seq
+    return clusters_pfam_dict
+
+def align_pfam_domains(clusters_pfam_dict,pfam_db_path):
+    ## perform the domain alignments
+    with TemporaryDirectory(change=True) as tempdir:
+        for domain, pfam_bgc_hits in clusters_pfam_dict.items():
+            with open('{}.fa'.format(domain),'w') as domain_fasta_file:
+                logging.debug('Writing fasta file for Domain: {}'.format(domain))
+                for bgc in pfam_bgc_hits.keys():
+                    for (idx,(start,stop)),seq in clusters_pfam_dict[domain][bgc].items():
+                        domain_fasta_file.write('>{}%{}%{}-{}\n{}\n'.format(bgc,idx,start,stop,seq))
+
+        logging.debug('Done writing fasta files.')
+        ### search for all of the domain fasta files written and use hmmalign to generate alignments, then update
+        ### pfam_dictionary
+
+        domain_fastas = glob('*.fa')
+        domains = [os.path.splitext(os.path.split(x)[1])[0] for x in domain_fastas]
+        for domain_fasta, domain in zip(domain_fastas, domains):
+            pfam_dict = clusters_pfam_dict[domain]
+            aligned_pfam_dict = run_hmmalign(domain_fasta,domain,pfam_db_path,pfam_dict)
+            clusters_pfam_dict[domain] = aligned_pfam_dict
+    return clusters_pfam_dict
+
+def compare_clusters_to_mibig(clusters_pfam_dict,record,mibig_dom_cts,mibig_pairs,anchor_domains):
+    distance_dict = dict()
+    for cluster in record.get_clusters():
+        query_id = 'query-{}-cluster-{}'.format(record.id,cluster.get_cluster_number())
+        cluster_pfam_dict = {k:v for k,v in clusters_pfam_dict.items() if query_id in v}
+        mibig_ids = set()
+        for pfam_dict in cluster_pfam_dict.values():
+            for cluster_id in pfam_dict.keys():
+                if 'query' not in cluster_id:
+                    mibig_ids.add(cluster_id)
+        cluster_distances = []
+        for mibig_id in mibig_ids:
+            logging.debug('Working on Cluster: {}'.format(query_id))
+            cluster_distances.append((mibig_id,calculate_distance(query_id,cluster_pfam_dict,cluster.pfam_domain_ctr,
+                                                                   cluster.pfam_domains,cluster.domain_strs,
+                                                                  mibig_id, mibig_dom_cts, mibig_pairs,
+                                                                  anchor_domains=anchor_domains)))
+        cluster_distances.sort(key=lambda x:x[1][0])
+
+        distance_dict[query_id] = cluster_distances
+    return distance_dict
 
 def compare_cluster_to_mibig(query_cluster: Cluster,record: Record,pfam_db_path: str,
                              mibig_pfam_dict: Dict, mibig_dom_cts,mibig_pairs,anchor_domains):
@@ -189,10 +271,9 @@ def compare_cluster_to_mibig(query_cluster: Cluster,record: Record,pfam_db_path:
 
     return distances
 
-def calculate_distance(cluster_pfam_dict, query_cluster_dom_cts, query_cluster_doms,query_dom_strs,
+def calculate_distance(query_id,cluster_pfam_dict, query_cluster_dom_cts, query_cluster_doms,query_dom_strs,
                        mibig_id,mibig_dom_cts, mibig_pairs,
                        weights = (0.2, 0.75, 0.05, 2.0), anchor_domains = set()):
-    logging.debug('Comparing cluster to MiBIG {}'.format(mibig_id))
     jacc_w, dss_w, ai_w, anchorboost = weights
 
     ref_cluster_dom_cts = mibig_dom_cts[mibig_id]
@@ -222,7 +303,7 @@ def calculate_distance(cluster_pfam_dict, query_cluster_dom_cts, query_cluster_d
     for shared_dom in shared_doms:
         domain_dict = cluster_pfam_dict[shared_dom]
 
-        query_dom_list = domain_dict['query']
+        query_dom_list = domain_dict[query_id]
         ref_dom_list = domain_dict[mibig_id]
 
         query_dom_ct = len(query_dom_list)
