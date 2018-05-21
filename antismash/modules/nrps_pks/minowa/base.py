@@ -7,9 +7,35 @@
 
 import logging
 from os import path
-from typing import Dict, List
+from typing import Any, Dict, List, Tuple
+
+from jinja2 import Markup
 
 from antismash.common import subprocessing, utils
+from antismash.modules.nrps_pks.data_structures import Prediction
+
+
+class MinowaPrediction(Prediction):
+    """ Holds Minowa results for a domain """
+    def __init__(self, results: List[Tuple[str, float]]) -> None:
+        super().__init__("minowa")
+        assert results
+        self.predictions = results
+
+    def get_classification(self) -> List[str]:
+        return [self.predictions[0][0]]
+
+    def to_json(self) -> Dict[str, Any]:
+        return {"method": "minowa",
+                "predictions": self.predictions}
+
+    def as_html(self) -> Markup:
+        return Markup("%s: %s (score: %d)" % (self.method, self.predictions[0][0], self.predictions[0][1]))
+
+    @staticmethod
+    def from_json(json: Dict[str, Any]) -> "MinowaPrediction":
+        assert json["method"] == "minowa"
+        return MinowaPrediction(json["predictions"])
 
 
 class MinowaResults(dict):
@@ -24,9 +50,13 @@ class MinowaResults(dict):
         for query_id, result in self.items():
             out_file.write("\\\\\n" + query_id + "\n")
             out_file.write("Substrate:\tScore:\n")
-            for name, score in result:
+            for name, score in result.predictions:
                 out_file.write("{}\t{}\n".format(name, score))
         out_file.close()
+
+    def to_json(self) -> Dict[str, Any]:
+        """ Serialiser to convert all values to JSON-friendly versions """
+        return {key: val.to_json() for key, val in self.items()}
 
 
 def hmmsearch(fasta_format: str, hmm: str) -> float:
@@ -54,7 +84,7 @@ def get_positions(filename: str, startpos: int) -> List[int]:
 
 
 def run_minowa(sequence_info: Dict[str, str], startpos: int, muscle_ref: str, ref_sequence: str,
-               positions_file: str, data_dir: str, hmm_names: List[str]) -> MinowaResults:
+               positions_file: str, data_dir: str, hmm_names: List[str]) -> Dict[str, Prediction]:
     """
         Scores query sequences against a set of provided HMM profiles. The scoring
         is calculated by aligning each query against the reference set, then extracting
@@ -72,8 +102,7 @@ def run_minowa(sequence_info: Dict[str, str], startpos: int, muscle_ref: str, re
 
         Returns:
             an instance of MinowaResults, which is a subclass of dict
-            mapping query sequence id to
-                a list tuples of hmm name and hmm score, in order of highest to lowest score
+                mapping query sequence id to MinowaPrediction
     """
     positions = get_positions(positions_file, startpos)
 
@@ -94,6 +123,5 @@ def run_minowa(sequence_info: Dict[str, str], startpos: int, muscle_ref: str, re
             hmm_scores[hmmname] = hmmsearch(fasta_format, path.join(data_dir, hmmname + ".hmm"))
 
         results = sorted(hmm_scores.items(), reverse=True, key=lambda x: (x[1], x[0]))
-        results_by_query[query_id] = results
-
+        results_by_query[query_id] = MinowaPrediction(results)
     return results_by_query

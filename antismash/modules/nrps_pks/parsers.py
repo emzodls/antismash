@@ -5,10 +5,14 @@
     predictions into a final, potentially modified, result.
 """
 
+from collections import defaultdict
 import logging
-from typing import Dict, List, Set, Tuple
+import string
+from typing import Dict, List, Tuple
 
 from antismash.common.secmet.feature import CDSFeature
+
+from .data_structures import Prediction
 
 LONG_TO_SHORT = {'Malonyl-CoA': 'mal', 'Methylmalonyl-CoA': 'mmal', 'Methoxymalonyl-CoA': 'mxmal',
                  'Ethylmalonyl-CoA': 'emal', 'Isobutyryl-CoA': 'isobut', '2-Methylbutyryl-CoA': '2metbut',
@@ -18,77 +22,112 @@ LONG_TO_SHORT = {'Malonyl-CoA': 'mal', 'Methylmalonyl-CoA': 'mmal', 'Methoxymalo
                  'inactive': 'inactive'}
 SHORT_TO_LONG = {val: key for key, val in LONG_TO_SHORT.items()}
 
+ALLOWABLE_PREDICTION_CHARACTERS = set(string.ascii_letters).union({'-'})
 
-def calculate_individual_consensus(predictions: List[str], available_smiles_parts: Set[str]) -> str:
+AVAILABLE_SMILES_PARTS = {'GLY', 'ALA', 'VAL', 'LEU', 'ILE', 'MET', 'PRO', 'PHE', 'TRP', 'SER', 'THR', 'ASN', 'GLN',
+                          'TYR', 'CYS', 'LYS', 'ARG',
+                          'HIS', 'ASP', 'GLU', 'MPRO', 'ORN', 'PGLY', 'DAB', 'BALA', 'AEO', 'DHA', 'PIP', 'BMT',
+                          'gly', 'ala', 'val', 'leu', 'ile', 'met', 'pro', 'phe', 'trp', 'ser',
+                          'thr', 'asn', 'gln', 'tyr', 'cys', 'lys', 'arg', 'his', 'asp', 'glu', 'aaa', 'mpro',
+                          'dhb', '2hiva', 'orn', 'pgly', 'dab', 'bala', 'aeo', '4mha', 'pico', 'phg',
+                          'dha', 'scy', 'pip', 'bmt', 'adds', 'aad', 'abu', 'hiv', 'dhpg', 'bht', '3-me-glu',
+                          '4pPro', 'ala-b', 'ala-d', 'dht', 'Sal', 'tcl', 'lys-b', 'hpg', 'hyv-d',
+                          'iva', 'vol', 'mal', 'mmal', 'ohmal', 'redmal', 'mxmal', 'emal', 'nrp', 'pk', 'Gly',
+                          'Ala', 'Val', 'Leu', 'Ile', 'Met', 'Pro', 'Phe', 'Trp', 'Ser', 'Thr', 'Asn', 'Gln', 'Tyr',
+                          'Cys', 'Lys', 'Arg', 'His', 'Asp', 'Glu', 'Mpro', '23Dhb', '34Dhb', '2Hiva', 'Orn',
+                          'Pgly', 'Dab', 'Bala', 'Aeo', '4Mha', 'Pico', 'Aaa', 'Dha', 'Scy', 'Pip',
+                          'Bmt', 'Adds', 'DHpg', 'DHB', 'nrp', 'pk'}
+
+
+def calculate_individual_consensus(predictions: List[str]) -> str:
     """ Finds the most frequent prediction in the list of predictions that is
         also in the set of available smiles parts.
 
-        In the case of a tie, the first prediction in the list with the highest
-        score is used.
+        Defaults to 'pk' in the case of no valid predictions or a tie.
 
         Arguments:
             predictions: the list of predictions
-            available_smiles_parts: the set of predictions which are 'valid'
 
         Returns:
             the most frequent prediction
     """
     best = "pk"
     highest_count = -1
-    for pred in predictions:
+    for pred in set(predictions):
         count = predictions.count(pred)
-        if count > 1 and count > highest_count and pred in available_smiles_parts:
+        if pred not in AVAILABLE_SMILES_PARTS:
+            continue
+        if count > 0 and count > highest_count:
             best = pred
             highest_count = count
+        elif count == highest_count:  # a tie means we default back to pk
+            best = "pk"
     return best
 
 
-def calculate_consensus_prediction(cds_features: List[CDSFeature], results: Dict[str, Dict[str, str]]
+def generate_nrps_consensus(results: Dict[str, Prediction]) -> str:
+    """ Finds the most frequent prediction in the list of predictions that is
+        also in the set of available smiles parts.
+
+        Defaults to 'nrp' in the case of no valid predictions or a tie.
+
+        Arguments:
+            predictions: the list of predictions
+
+        Returns:
+            the most frequent prediction
+    """
+    assert isinstance(results, dict), type(results)
+    hit_counts = defaultdict(int)  # type: Dict[str, int]
+    for method, prediction in results.items():
+        assert isinstance(method, str), method
+        assert isinstance(prediction, Prediction), prediction
+        if len(prediction.get_classification()) == 1:
+            best = prediction.get_classification()[0]
+            if not set(best).issubset(ALLOWABLE_PREDICTION_CHARACTERS):
+                raise ValueError("%s generated bad prediction string: %s" % (method, best))
+            hit_counts[best] += 1
+
+    consensus = "nrp"
+    # only really care about the first two for checking if it was a tie
+    best_hits = sorted((count, name) for name, count in hit_counts.items())[:2]
+    # if the best hit isn't tie, use that
+    if best_hits and len({count for count, _ in best_hits}) == 1:
+        consensus = best_hits[0][1]
+    return consensus
+
+
+def calculate_consensus_prediction(cds_features: List[CDSFeature], results: Dict[str, Dict[str, Prediction]]
                                    ) -> Tuple[Dict[str, str], Dict[str, str]]:
     """ Uses all calculations to generate smiles parts to use
 
         Arguments:
             cds_features: a list of CDSFeature to calculate consensus for
-            results: a dictionary mapping PKS analysis method to the prediction
-                     for that method
+            results: a dictionary mapping AntismashDomain name to
+                        a dictionary mapping analysis method to a Prediction
 
         Returns:
             a tuple of dicts mapping domain label to prediction
-                the first for AT domains
-                the second for KS domains
+                the first for all domains except AT domains in trans-AT clusters
+                the second for AT domains in trans-AT clusters
     """
     # Combine substrate specificity predictions into consensus prediction
     cis_at = {}  # type: Dict[str, str]  # feature name -> prediction
     trans_at = {}  # type: Dict[str, str]  # feature name -> prediction
-    available_smiles_parts = {'GLY', 'ALA', 'VAL', 'LEU', 'ILE', 'MET', 'PRO', 'PHE', 'TRP', 'SER', 'THR', 'ASN', 'GLN',
-                              'TYR', 'CYS', 'LYS', 'ARG',
-                              'HIS', 'ASP', 'GLU', 'MPRO', 'ORN', 'PGLY', 'DAB', 'BALA', 'AEO', 'DHA', 'PIP', 'BMT',
-                              'gly', 'ala', 'val', 'leu', 'ile', 'met', 'pro', 'phe', 'trp', 'ser',
-                              'thr', 'asn', 'gln', 'tyr', 'cys', 'lys', 'arg', 'his', 'asp', 'glu', 'aaa', 'mpro',
-                              'dhb', '2hiva', 'orn', 'pgly', 'dab', 'bala', 'aeo', '4mha', 'pico', 'phg',
-                              'dha', 'scy', 'pip', 'bmt', 'adds', 'aad', 'abu', 'hiv', 'dhpg', 'bht', '3-me-glu',
-                              '4pPro', 'ala-b', 'ala-d', 'dht', 'Sal', 'tcl', 'lys-b', 'hpg', 'hyv-d',
-                              'iva', 'vol', 'mal', 'mmal', 'ohmal', 'redmal', 'mxmal', 'emal', 'nrp', 'pk', 'Gly',
-                              'Ala', 'Val', 'Leu', 'Ile', 'Met', 'Pro', 'Phe', 'Trp', 'Ser', 'Thr', 'Asn', 'Gln', 'Tyr',
-                              'Cys', 'Lys', 'Arg', 'His', 'Asp', 'Glu', 'Mpro', '23Dhb', '34Dhb', '2Hiva', 'Orn',
-                              'Pgly', 'Dab', 'Bala', 'Aeo', '4Mha', 'Pico', 'Aaa', 'Dha', 'Scy', 'Pip',
-                              'Bmt', 'Adds', 'DHpg', 'DHB', 'nrp', 'pk'}
 
     for cds in cds_features:
-        assert cds.cluster, "Orphaned CDS found"
+        assert cds.cluster, "Orphaned CDS found: %s" % cds
         for domain in cds.nrps_pks.domains:
+            predictions = results[domain.feature_name]
             if 'OTHER' in domain.label:
                 continue
             if domain.name == "PKS_AT":
                 preds = []
-                at_results = results["minowa_at"].get(domain.feature_name)
-                if at_results:
-                    pred = results["minowa_at"][domain.feature_name][0][0]
-                    preds.append(LONG_TO_SHORT.get(pred))
-                sig_results = results["signature"].get(domain.feature_name)
-                if sig_results:
-                    preds.append(sig_results[0].name.rsplit("_", 1)[-1])
-                    consensus = calculate_individual_consensus(preds, available_smiles_parts)
+                minowa_preds = predictions["minowa_at"].get_classification()
+                preds.append(LONG_TO_SHORT.get(minowa_preds[0], minowa_preds[0]))
+                sig_results = predictions["signature"]
+                preds.extend(sig_results.get_classification()[:1])
+                consensus = calculate_individual_consensus(preds)
 
                 if 'transatpks' not in cds.cluster.products:
                     cis_at[domain.feature_name] = consensus
@@ -101,11 +140,12 @@ def calculate_consensus_prediction(cds_features: List[CDSFeature], results: Dict
                 cis_at[domain.feature_name] = "mal"
 
             if domain.name in ["AMP-binding", "A-OX"]:
-                cis_at[domain.feature_name] = "nrp"
+                cis_at[domain.feature_name] = generate_nrps_consensus(predictions)
             elif domain.name == "CAL_domain":
-                pred = results["minowa_cal"][domain.feature_name][0][0]
-                pred = LONG_TO_SHORT.get(pred, pred)
-                if pred in available_smiles_parts:
+                preds = predictions["minowa_cal"].get_classification()
+                pred = LONG_TO_SHORT.get(preds[0], preds[0])
+                assert isinstance(pred, str)
+                if pred in AVAILABLE_SMILES_PARTS:
                     cis_at[domain.feature_name] = pred
                 else:
                     logging.critical("missing %s from SMILES parts for domain %s", pred, domain.feature_name)

@@ -3,11 +3,9 @@
 
 """ Generates HTML and JSON for the nrps_pks module """
 
-
 import logging
-import os
 import re
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterator, Iterable, List, Optional, Tuple, Union
 
 from jinja2 import FileSystemLoader, Environment, StrictUndefined
 
@@ -17,7 +15,7 @@ from antismash.common.secmet import CDSFeature, Record, Cluster
 from antismash.common.secmet.qualifiers import NRPSPKSQualifier
 from antismash.config import ConfigType
 
-from .results import NRPS_PKS_Results
+from .results import NRPS_PKS_Results, UNKNOWN
 
 
 class JSONBase(dict):
@@ -108,11 +106,12 @@ def generate_sidepanel(cluster_layer: ClusterLayer, results: NRPS_PKS_Results,
     nrps_layer = NrpspksLayer(results, cluster_layer.cluster_feature, record_layer)
     sidepanel = template.render(record=record_layer,
                                 cluster=nrps_layer,
+                                results=results,
                                 options=options_layer)
     return sidepanel
 
 
-def map_as_names_to_norine(as_name: str) -> str:
+def map_as_name_to_norine(as_name: str) -> str:
     """ Maps antiSMASH amino acid nomenclature to NORINE """
 
     as_replacement_dict = {'bht': 'bOH-Tyr',
@@ -125,35 +124,17 @@ def map_as_names_to_norine(as_name: str) -> str:
     return as_replacement_dict.get(as_name, as_name)
 
 
-def parse_substrate_predictions(nrps_predictions: Dict[str, str]) -> List[Tuple[str, str]]:
-    "Parse the substrate predictions from the NRPS/PKS domain string"
-    predictions = []
-
-    for method, pred in sorted(nrps_predictions.items()):
-        if method == "SNN score":
-            pass
-        elif method == "PID to NN":
-            method = "%ID to nearest neighbour"
-        elif pred == "no_call":
-            pred = "N/A"
-        predictions.append((method, pred))
-
-    return predictions
-
-
 def filter_norine_as(monomers: List[str], be_strict: bool = False) -> List[str]:
     """ Remove PKS and unknown substrate predictions
         use be_strict = True to also filter nrp/X
     """
     filtered_list = []
-    bad_monomers = {'pk', 'N/A', 'hydrophilic', 'hydrophobic', 'mal', 'mmal'}
+    bad_monomers = {'pk', UNKNOWN, 'hydrophilic', 'hydrophobic', 'mal', 'mmal'}
     if be_strict:
         bad_monomers = bad_monomers.union({'nrp', 'X'})
     for monomer in monomers:
-        for sub_monomer in monomer.split("|"):  # if no pipe, list of 1
-            if sub_monomer in bad_monomers:
-                continue
-            filtered_list.append(map_as_names_to_norine(sub_monomer))
+        assert '|' not in monomer, monomer
+        filtered_list.append(map_as_name_to_norine(monomer))
     return filtered_list
 
 
@@ -162,34 +143,29 @@ def get_norine_url_for_specificities(specificities: List[List[str]],
     """ generate NORINE URL string for direct querying from array of specificity predictions
         use be_strict=False to add * after each monomer
     """
-    modulelist = []
+    modules = []
     if not specificities:
         return None
 
     for domain_specificity_list in specificities:
+        assert isinstance(domain_specificity_list, list), type(domain_specificity_list)
         if not domain_specificity_list:
             logging.error("retrieved empty domain list for assembling per protein NORINE link string")
             raise RuntimeError("empty domain list for NORINE generation")
-        if len(domain_specificity_list) == 1:
-            if be_strict:
-                modulelist.append(map_as_names_to_norine(domain_specificity_list[0]))
-            else:
-                modulelist.append(map_as_names_to_norine(domain_specificity_list[0])+"*")
-        else:  # > 1
-            if be_strict:
-                modules = []
-                for element in filter_norine_as(domain_specificity_list, be_strict=True):
-                    modules.append(map_as_names_to_norine(element))
-                modulelist.append("[" + "|".join(modules) + "]")
-            else:
-                # we have to use be_strict to remove X from the list of predictions,
-                # as otherwise consenus: nrp will always match
-                monomers = [map_as_names_to_norine(element)+"*"
-                            for element in filter_norine_as(domain_specificity_list, be_strict=True)]
-                # Norine doesn't allow "x*" as a "relaxed" monomer, so we have to replace this with "x"
-                monomers = list(map(lambda x: "x" if x == "x*" else x, monomers))
-                modulelist.append("["+"|".join(monomers)+"]")
-    return "http://bioinfo.lifl.fr/norine/fingerPrintSearch.jsp?nrps1=" + ",".join(modulelist)
+        wildcard = "*"
+        separator = "|"
+        if be_strict:
+            wildcard = ""
+        # always be strict to remove X and nrp
+        chunks = [monomer for monomer in filter_norine_as(domain_specificity_list, be_strict=True)]
+        query = (wildcard + separator).join(chunks) + wildcard
+        if len(domain_specificity_list) > 1:
+            query = "[" + query + "]"
+        # lastly, remove the Norine-forbidden x*
+        if be_strict:
+            query.replace("x*", "x")
+        modules.append(query)
+    return "http://bioinfo.lifl.fr/norine/fingerPrintSearch.jsp?nrps1=" + ",".join(modules)
 
 
 class NrpspksLayer(ClusterLayer):
@@ -201,6 +177,7 @@ class NrpspksLayer(ClusterLayer):
     def __init__(self, results: NRPS_PKS_Results, cluster_feature: Cluster, record: RecordLayer) -> None:
         self.url_strict = {}  # type: Dict[str, str]  # gene name -> url
         self.url_relaxed = {}  # type: Dict[str, str]  # gene name -> url
+        self._build_urls(cluster_feature.cds_children)
         super().__init__(record, cluster_feature)
         self.transatpks = False
         assert isinstance(results, NRPS_PKS_Results), type(results)
@@ -232,7 +209,8 @@ class NrpspksLayer(ClusterLayer):
     @property
     def warning(self) -> str:
         """ A caveat for structure prediction accuracy """
-        # TODO: don't create warning if no structure image provided
+        if not self.monomer:
+            return ""
         core = ("Rough prediction of core scaffold based on assumed %s;"
                 " tailoring reactions not taken into account")
         if self.used_domain_docking:
@@ -243,61 +221,38 @@ class NrpspksLayer(ClusterLayer):
         return core % detail
 
     @property
-    def sidepanel_predictions(self) -> Dict[str, List[List[Tuple[str, str]]]]:
-        """ The sidepanel predictions for gene domains, includes URLs for
-            related searches
-        """
-        sidepanel_predictions = {}  # type: Dict[str, List[List[Tuple[str, str]]]]
-        features = self.cluster_feature.cds_children
-        for feature in features:
+    def sidepanel_features(self) -> List[str]:
+        """ Returns a list of relevant CDSFeature names """
+        return sorted(feature.get_name() for feature in self.cluster_feature.cds_children if feature.nrps_pks)
+
+    def _build_urls(self, cds_features: Iterable[CDSFeature]) -> None:
+        for feature in cds_features:
             if not feature.nrps_pks:
                 continue
 
+            feature_name = feature.get_name()
+
             per_cds_predictions = []
-            gene_id = feature.get_name()
 
             for domain in feature.nrps_pks.domains:
-                per_a_domain_predictions = []
-                preds = parse_substrate_predictions(domain.predictions)
-                if not preds:
+                if domain.name not in ["AMP-binding", "A-OX"]:
                     continue
+                per_a_domain_predictions = set()
+                for possibilities in domain.predictions.values():
+                    for possibility in filter_norine_as(possibilities.split(","), be_strict=False):
+                        per_a_domain_predictions.add(map_as_name_to_norine(possibility))
+                per_cds_predictions.append(list(per_a_domain_predictions))
 
-                if domain.name == "AMP-binding":
-                    for key, val in preds:
-                        if key in ["SNN score", "%ID to nearest neighbour"]:
-                            continue
-                        if key == "PrediCAT":
-                            val = val.rsplit("-")[-1]
-                        values = filter_norine_as(val.split(","))
-                        if values:
-                            per_a_domain_predictions.extend(val.split(","))
-                    unique_a_domain_predictions = list(set(per_a_domain_predictions))
-                    per_cds_predictions.append(unique_a_domain_predictions)
-
-                if gene_id not in sidepanel_predictions:
-                    sidepanel_predictions[gene_id] = []
-                sidepanel_predictions[gene_id].append(preds)
-
-            if per_cds_predictions:
-                self.url_strict[gene_id] = get_norine_url_for_specificities(per_cds_predictions)
-                if self.url_strict[gene_id]:
-                    self.url_relaxed[gene_id] = get_norine_url_for_specificities(per_cds_predictions,
-                                                                                 be_strict=False)
-
-        return sidepanel_predictions
+            if not per_cds_predictions:
+                continue
+            self.url_strict[feature_name] = get_norine_url_for_specificities(per_cds_predictions)
+            if self.url_strict[feature_name]:
+                self.url_relaxed[feature_name] = get_norine_url_for_specificities(per_cds_predictions,
+                                                                                  be_strict=False)
 
     def is_nrps(self) -> bool:
         """ is the cluster a NRPS or NRPS hybrid """
         return 'nrps' in self.cluster_feature.products
-
-    def get_structure_image_url(self) -> str:
-        "Get the relative url to the structure image"
-        expected = os.path.join("structures",
-                                "genecluster%d.png" % self.cluster_feature.get_cluster_number())
-        abs_path = os.path.join(self.record.options.output_dir, expected)
-        if os.path.exists(abs_path):
-            return expected
-        return 'images/nostructure_icon.png'
 
     def get_monomer_prediction(self) -> str:
         "Get the monomer prediction of the cluster"
@@ -315,10 +270,10 @@ class NrpspksLayer(ClusterLayer):
             monomers = monomers_per_protein[1:-1].split("-")
 
             if be_strict:
-                monomers = [map_as_names_to_norine(element.lower())
+                monomers = [map_as_name_to_norine(element.lower())
                             for element in filter_norine_as(monomers, be_strict=True)]
             else:
-                monomers = [map_as_names_to_norine(element.lower()) + "*"
+                monomers = [map_as_name_to_norine(element.lower()) + "*"
                             for element in filter_norine_as(monomers)]
             # Norine doesn't allow "x*" as a "relaxed" monomer, so we have to replace this with "x"
             monomers = list(map(lambda x: "x" if x == "x*" else x, monomers))
@@ -332,7 +287,7 @@ class NrpspksLayer(ClusterLayer):
     def parse_domain(self, domain: NRPSPKSQualifier.Domain, feature: CDSFeature
                      ) -> JSONDomain:
         "Convert a NRPS/PKS domain string to a dict useable by json.dumps"
-        predictions = parse_substrate_predictions(domain.predictions)
+        predictions = list(domain.predictions.items())
 
         # Create url_link to NaPDoS for C and KS domains
         napdoslink = ""

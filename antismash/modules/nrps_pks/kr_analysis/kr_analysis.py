@@ -14,6 +14,7 @@ writes an outfile file in the tab-separated form: name, activity, stereochem
 from typing import Dict, Tuple
 
 from antismash.common import path, subprocessing, utils
+from antismash.modules.nrps_pks.data_structures import SimplePrediction, Prediction
 
 _KR_DOMAINS_FILENAME = path.get_full_path(__file__, "data", "KRdomains_muscle.fasta")
 
@@ -47,7 +48,7 @@ def predict_stereochemistry(signature: str) -> str:
     return stereochemistry
 
 
-def run_kr_analysis(queries: Dict[str, str]) -> Tuple[Dict[str, bool], Dict[str, str]]:
+def run_kr_analysis(queries: Dict[str, str]) -> Tuple[Dict[str, Prediction], Dict[str, Prediction]]:
     """ Extract activity and stereochemistry signatures from KR domains
 
         Arguments:
@@ -73,15 +74,18 @@ def run_kr_analysis(queries: Dict[str, str]) -> Tuple[Dict[str, bool], Dict[str,
         stereochem_signatures.append(utils.extract_by_reference_positions(muscle_dict[name], refseq, positions_ste))
 
     # Check activity
-    activity = {}
+    activity = {}  # type: Dict[str, Prediction]
     for name, signature in zip(querysignames, activity_signatures):
-        activity[name] = is_active(signature)
+        if is_active(signature):
+            activity[name] = SimplePrediction("kr_activity", "active")
+        else:
+            activity[name] = SimplePrediction("kr_activity", "inactive")
 
     # Predict stereochemistry
-    stereochemistry = {}
+    stereochemistry = {}  # type: Dict[str, Prediction]
     for name, signature in zip(querysignames, stereochem_signatures):
         chem = predict_stereochemistry(signature)
         if chem:
-            stereochemistry[name] = chem
+            stereochemistry[name] = SimplePrediction("kr_stereochem", chem)
 
     return activity, stereochemistry
