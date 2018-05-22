@@ -49,7 +49,7 @@ def get_arguments() -> ModuleArgs:
     args.add_analysis_toggle('bigscape',
                              dest='bigscape',
                              action='store_true',
-                             default=True,
+                             default=False,
                              help="Calculate BiG-SCAPE distances of cluster to MiBIG")
     args.add_option('nclusters',
                     dest='nclusters',
