@@ -105,7 +105,7 @@ def perform_knowncluster_bigscape(options: ConfigType, record: Record) -> Genera
     distance_dict = compare_clusters_to_mibig(clusters_pfam_dict, record, mibig_dom_cts, mibig_pairs, anchor_domains)
 
     for cluster in distance_dict:
-        out_prefix = cluster.replace('query''bigscape')
+        out_prefix = cluster.replace('query','bigscape')
         write_raw_bigscape_output(options.output_dir,distance_dict[cluster],prefix=out_prefix)
     return results
 
