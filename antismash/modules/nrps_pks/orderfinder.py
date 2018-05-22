@@ -44,14 +44,14 @@ def analyse_biosynthetic_order(nrps_pks_features: List[CDSFeature],
             continue
         pks_count, nrps_count, hybrid_count = find_cluster_modular_enzymes(cds_in_cluster)
         # If more than three PKS cds features, use dock_dom_analysis if possible to identify order
-        if 3 < pks_count < 11 and not nrps_count and not hybrid_count:
-            logging.debug("Cluster %d monomer ordering method: domain docking analysis", cluster_number)
-            geneorder = perform_docking_domain_analysis(cds_in_cluster)
-            docking = True
-        else:
-            logging.debug("Cluster %d monomer ordering method: colinear", cluster_number)
-            geneorder = find_colinear_order(cds_in_cluster)
-            docking = False
+        # if 3 < pks_count < 11 and not nrps_count and not hybrid_count:
+        #     logging.debug("Cluster %d monomer ordering method: domain docking analysis", cluster_number)
+        #     geneorder = perform_docking_domain_analysis(cds_in_cluster)
+        #     docking = True
+        # else:
+        logging.debug("Cluster %d monomer ordering method: colinear", cluster_number)
+        geneorder = find_colinear_order(cds_in_cluster)
+        docking = False
         prediction = generate_substrates_order(geneorder, consensus_predictions)
         compound_predictions[cluster_number] = (prediction, docking)
     return compound_predictions
